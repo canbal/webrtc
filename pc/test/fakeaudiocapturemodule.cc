@@ -10,8 +10,10 @@
 
 #include "pc/test/fakeaudiocapturemodule.h"
 
+#include <string.h>
+
 #include "rtc_base/checks.h"
-#include "rtc_base/refcount.h"
+#include "rtc_base/location.h"
 #include "rtc_base/refcountedobject.h"
 #include "rtc_base/thread.h"
 #include "rtc_base/timeutils.h"
@@ -45,8 +47,7 @@ FakeAudioCaptureModule::FakeAudioCaptureModule()
       current_mic_level_(kMaxVolume),
       started_(false),
       next_frame_time_(0),
-      frames_received_(0) {
-}
+      frames_received_(0) {}
 
 FakeAudioCaptureModule::~FakeAudioCaptureModule() {
   if (process_thread_) {
@@ -233,16 +234,6 @@ bool FakeAudioCaptureModule::Recording() const {
   return recording_;
 }
 
-int32_t FakeAudioCaptureModule::SetAGC(bool /*enable*/) {
-  // No AGC but not needed since audio is pregenerated. Return success.
-  return 0;
-}
-
-bool FakeAudioCaptureModule::AGC() const {
-  RTC_NOTREACHED();
-  return 0;
-}
-
 int32_t FakeAudioCaptureModule::InitSpeaker() {
   // No speaker, just playing from file. Return success.
   return 0;
@@ -388,61 +379,9 @@ int32_t FakeAudioCaptureModule::StereoRecording(bool* /*enabled*/) const {
   return 0;
 }
 
-int32_t FakeAudioCaptureModule::SetRecordingChannel(
-    const ChannelType channel) {
-  if (channel != AudioDeviceModule::kChannelBoth) {
-    // There is no right or left in mono. I.e. kChannelBoth should be used for
-    // mono.
-    RTC_NOTREACHED();
-    return -1;
-  }
-  return 0;
-}
-
-int32_t FakeAudioCaptureModule::RecordingChannel(ChannelType* channel) const {
-  // Stereo recording not supported. However, WebRTC ADM returns kChannelBoth
-  // in that case. Do the same here.
-  *channel = AudioDeviceModule::kChannelBoth;
-  return 0;
-}
-
 int32_t FakeAudioCaptureModule::PlayoutDelay(uint16_t* delay_ms) const {
   // No delay since audio frames are dropped.
   *delay_ms = 0;
-  return 0;
-}
-
-int32_t FakeAudioCaptureModule::SetRecordingSampleRate(
-    const uint32_t /*samples_per_sec*/) {
-  RTC_NOTREACHED();
-  return 0;
-}
-
-int32_t FakeAudioCaptureModule::RecordingSampleRate(
-    uint32_t* /*samples_per_sec*/) const {
-  RTC_NOTREACHED();
-  return 0;
-}
-
-int32_t FakeAudioCaptureModule::SetPlayoutSampleRate(
-    const uint32_t /*samples_per_sec*/) {
-  RTC_NOTREACHED();
-  return 0;
-}
-
-int32_t FakeAudioCaptureModule::PlayoutSampleRate(
-    uint32_t* /*samples_per_sec*/) const {
-  RTC_NOTREACHED();
-  return 0;
-}
-
-int32_t FakeAudioCaptureModule::SetLoudspeakerStatus(bool /*enable*/) {
-  RTC_NOTREACHED();
-  return 0;
-}
-
-int32_t FakeAudioCaptureModule::GetLoudspeakerStatus(bool* /*enabled*/) const {
-  RTC_NOTREACHED();
   return 0;
 }
 
@@ -488,7 +427,8 @@ bool FakeAudioCaptureModule::CheckRecBuffer(int value) {
   const size_t buffer_size_in_samples =
       sizeof(rec_buffer_) / kNumberBytesPerSample;
   for (size_t i = 0; i < buffer_size_in_samples; ++i) {
-    if (buffer_ptr[i] >= value) return true;
+    if (buffer_ptr[i] >= value)
+      return true;
   }
   return false;
 }
@@ -558,10 +498,10 @@ void FakeAudioCaptureModule::ReceiveFrameP() {
     size_t nSamplesOut = 0;
     int64_t elapsed_time_ms = 0;
     int64_t ntp_time_ms = 0;
-    if (audio_callback_->NeedMorePlayData(kNumberSamples, kNumberBytesPerSample,
-                                         kNumberOfChannels, kSamplesPerSecond,
-                                         rec_buffer_, nSamplesOut,
-                                         &elapsed_time_ms, &ntp_time_ms) != 0) {
+    if (audio_callback_->NeedMorePlayData(
+            kNumberSamples, kNumberBytesPerSample, kNumberOfChannels,
+            kSamplesPerSecond, rec_buffer_, nSamplesOut, &elapsed_time_ms,
+            &ntp_time_ms) != 0) {
       RTC_NOTREACHED();
     }
     RTC_CHECK(nSamplesOut == kNumberSamples);
@@ -587,13 +527,10 @@ void FakeAudioCaptureModule::SendFrameP() {
   bool key_pressed = false;
   uint32_t current_mic_level = 0;
   MicrophoneVolume(&current_mic_level);
-  if (audio_callback_->RecordedDataIsAvailable(send_buffer_, kNumberSamples,
-                                              kNumberBytesPerSample,
-                                              kNumberOfChannels,
-                                              kSamplesPerSecond, kTotalDelayMs,
-                                              kClockDriftMs, current_mic_level,
-                                              key_pressed,
-                                              current_mic_level) != 0) {
+  if (audio_callback_->RecordedDataIsAvailable(
+          send_buffer_, kNumberSamples, kNumberBytesPerSample,
+          kNumberOfChannels, kSamplesPerSecond, kTotalDelayMs, kClockDriftMs,
+          current_mic_level, key_pressed, current_mic_level) != 0) {
     RTC_NOTREACHED();
   }
   SetMicrophoneVolume(current_mic_level);

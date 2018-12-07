@@ -10,12 +10,20 @@
 
 #include <list>
 #include <memory>
+#include <vector>
 
 #include "p2p/base/basicpacketsocketfactory.h"
+#include "p2p/base/p2pconstants.h"
 #include "p2p/base/tcpport.h"
+#include "p2p/base/transportdescription.h"
 #include "rtc_base/gunit.h"
+#include "rtc_base/helpers.h"
+#include "rtc_base/ipaddress.h"
+#include "rtc_base/third_party/sigslot/sigslot.h"
 #include "rtc_base/thread.h"
+#include "rtc_base/timeutils.h"
 #include "rtc_base/virtualsocketserver.h"
+#include "test/gtest.h"
 
 using rtc::SocketAddress;
 using cricket::Connection;
@@ -26,12 +34,16 @@ using cricket::ICE_PWD_LENGTH;
 
 static int kTimeout = 1000;
 static const SocketAddress kLocalAddr("11.11.11.11", 0);
+static const SocketAddress kLocalIPv6Addr("2401:fa00:4:1000:be30:5bff:fee5:c3",
+                                          0);
 static const SocketAddress kAlternateLocalAddr("1.2.3.4", 0);
 static const SocketAddress kRemoteAddr("22.22.22.22", 0);
+static const SocketAddress kRemoteIPv6Addr("2401:fa00:4:1000:be30:5bff:fee5:c4",
+                                           0);
 
 class ConnectionObserver : public sigslot::has_slots<> {
  public:
-  ConnectionObserver(Connection* conn) {
+  explicit ConnectionObserver(Connection* conn) {
     conn->SignalDestroyed.connect(this, &ConnectionObserver::OnDestroyed);
   }
 
@@ -50,8 +62,7 @@ class TCPPortTest : public testing::Test, public sigslot::has_slots<> {
         main_(ss_.get()),
         socket_factory_(rtc::Thread::Current()),
         username_(rtc::CreateRandomString(ICE_UFRAG_LENGTH)),
-        password_(rtc::CreateRandomString(ICE_PWD_LENGTH)) {
-  }
+        password_(rtc::CreateRandomString(ICE_PWD_LENGTH)) {}
 
   rtc::Network* MakeNetwork(const SocketAddress& addr) {
     networks_.emplace_back("unittest", "unittest", addr.ipaddr(), 32);
@@ -155,9 +166,28 @@ TEST_F(TCPPortTest, TCPPortNotDiscardedIfNotBoundToBestIP) {
             local_port->Candidates()[0].address().ipaddr());
 }
 
+// Regression test for crbug.com/webrtc/8972, caused by buggy comparison
+// between rtc::IPAddress and rtc::InterfaceAddress.
+TEST_F(TCPPortTest, TCPPortNotDiscardedIfBoundToTemporaryIP) {
+  networks_.emplace_back("unittest", "unittest", kLocalIPv6Addr.ipaddr(), 32);
+  networks_.back().AddIP(rtc::InterfaceAddress(
+      kLocalIPv6Addr.ipaddr(), rtc::IPV6_ADDRESS_FLAG_TEMPORARY));
+
+  auto local_port = CreateTCPPort(&networks_.back());
+  auto remote_port = CreateTCPPort(kRemoteIPv6Addr);
+  local_port->PrepareAddress();
+  remote_port->PrepareAddress();
+
+  // Connection should succeed if the port isn't discarded.
+  Connection* conn = local_port->CreateConnection(remote_port->Candidates()[0],
+                                                  Port::ORIGIN_MESSAGE);
+  ASSERT_NE(nullptr, conn);
+  EXPECT_TRUE_WAIT(conn->connected(), kTimeout);
+}
+
 class SentPacketCounter : public sigslot::has_slots<> {
  public:
-  SentPacketCounter(TCPPort* p) {
+  explicit SentPacketCounter(TCPPort* p) {
     p->SignalSentPacket.connect(this, &SentPacketCounter::OnSentPacket);
   }
 

@@ -14,6 +14,7 @@
 #include <memory>
 
 #include "logging/rtc_event_log/rtc_event_log.h"
+#include "rtc_base/task_queue.h"
 
 namespace webrtc {
 

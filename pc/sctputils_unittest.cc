@@ -9,9 +9,12 @@
  */
 
 #include "pc/sctputils.h"
+
+#include <stdint.h>
+
 #include "rtc_base/bytebuffer.h"
 #include "rtc_base/copyonwritebuffer.h"
-#include "rtc_base/gunit.h"
+#include "test/gtest.h"
 
 class SctpUtilsTest : public testing::Test {
  public:
@@ -31,12 +34,14 @@ class SctpUtilsTest : public testing::Test {
 
     ASSERT_TRUE(buffer.ReadUInt8(&channel_type));
     if (config.ordered) {
-      EXPECT_EQ(config.maxRetransmits > -1 ?
-                    0x01 : (config.maxRetransmitTime > -1 ? 0x02 : 0),
+      EXPECT_EQ(config.maxRetransmits > -1
+                    ? 0x01
+                    : (config.maxRetransmitTime > -1 ? 0x02 : 0),
                 channel_type);
     } else {
-      EXPECT_EQ(config.maxRetransmits > -1 ?
-                    0x81 : (config.maxRetransmitTime > -1 ? 0x82 : 0x80),
+      EXPECT_EQ(config.maxRetransmits > -1
+                    ? 0x81
+                    : (config.maxRetransmitTime > -1 ? 0x82 : 0x80),
                 channel_type);
     }
 
@@ -44,8 +49,8 @@ class SctpUtilsTest : public testing::Test {
 
     ASSERT_TRUE(buffer.ReadUInt32(&reliability));
     if (config.maxRetransmits > -1 || config.maxRetransmitTime > -1) {
-      EXPECT_EQ(config.maxRetransmits > -1 ?
-                    config.maxRetransmits : config.maxRetransmitTime,
+      EXPECT_EQ(config.maxRetransmits > -1 ? config.maxRetransmits
+                                           : config.maxRetransmitTime,
                 static_cast<int>(reliability));
     }
 
@@ -75,8 +80,8 @@ TEST_F(SctpUtilsTest, WriteParseOpenMessageWithOrderedReliable) {
 
   std::string output_label;
   webrtc::DataChannelInit output_config;
-  ASSERT_TRUE(webrtc::ParseDataChannelOpenMessage(
-      packet, &output_label, &output_config));
+  ASSERT_TRUE(webrtc::ParseDataChannelOpenMessage(packet, &output_label,
+                                                  &output_config));
 
   EXPECT_EQ(label, output_label);
   EXPECT_EQ(config.protocol, output_config.protocol);
@@ -99,8 +104,8 @@ TEST_F(SctpUtilsTest, WriteParseOpenMessageWithMaxRetransmitTime) {
 
   std::string output_label;
   webrtc::DataChannelInit output_config;
-  ASSERT_TRUE(webrtc::ParseDataChannelOpenMessage(
-      packet, &output_label, &output_config));
+  ASSERT_TRUE(webrtc::ParseDataChannelOpenMessage(packet, &output_label,
+                                                  &output_config));
 
   EXPECT_EQ(label, output_label);
   EXPECT_EQ(config.protocol, output_config.protocol);
@@ -122,8 +127,8 @@ TEST_F(SctpUtilsTest, WriteParseOpenMessageWithMaxRetransmits) {
 
   std::string output_label;
   webrtc::DataChannelInit output_config;
-  ASSERT_TRUE(webrtc::ParseDataChannelOpenMessage(
-      packet, &output_label, &output_config));
+  ASSERT_TRUE(webrtc::ParseDataChannelOpenMessage(packet, &output_label,
+                                                  &output_config));
 
   EXPECT_EQ(label, output_label);
   EXPECT_EQ(config.protocol, output_config.protocol);

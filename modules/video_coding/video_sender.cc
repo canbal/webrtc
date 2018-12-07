@@ -8,24 +8,42 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include <stddef.h>
+#include <stdint.h>
+#include <vector>
 
-#include <algorithm>  // std::max
-
+#include "api/video/video_bitrate_allocation.h"
+#include "api/video/video_bitrate_allocator.h"
+#include "api/video/video_frame.h"
+#include "api/video/video_frame_buffer.h"
+#include "api/video_codecs/video_codec.h"
+#include "api/video_codecs/video_encoder.h"
 #include "common_types.h"  // NOLINT(build/include)
-#include "common_video/include/video_bitrate_allocator.h"
-#include "common_video/libyuv/include/webrtc_libyuv.h"
-#include "modules/video_coding/codecs/vp8/temporal_layers.h"
-#include "modules/video_coding/encoded_frame.h"
+#include "modules/video_coding/encoder_database.h"
+#include "modules/video_coding/generic_encoder.h"
 #include "modules/video_coding/include/video_codec_interface.h"
+#include "modules/video_coding/include/video_coding_defines.h"
+#include "modules/video_coding/include/video_error_codes.h"
+#include "modules/video_coding/internal_defines.h"
+#include "modules/video_coding/media_optimization.h"
 #include "modules/video_coding/utility/default_video_bitrate_allocator.h"
-#include "modules/video_coding/utility/quality_scaler.h"
 #include "modules/video_coding/video_coding_impl.h"
 #include "rtc_base/checks.h"
+#include "rtc_base/criticalsection.h"
 #include "rtc_base/logging.h"
+#include "rtc_base/scoped_ref_ptr.h"
+#include "rtc_base/sequenced_task_checker.h"
 #include "system_wrappers/include/clock.h"
+#include "system_wrappers/include/field_trial.h"
 
 namespace webrtc {
 namespace vcm {
+
+namespace {
+
+constexpr char kFrameDropperFieldTrial[] = "WebRTC-FrameDropper";
+
+}  // namespace
 
 VideoSender::VideoSender(Clock* clock,
                          EncodedImageCallback* post_encode_callback)
@@ -34,12 +52,12 @@ VideoSender::VideoSender(Clock* clock,
       _encodedFrameCallback(post_encode_callback, &_mediaOpt),
       post_encode_callback_(post_encode_callback),
       _codecDataBase(&_encodedFrameCallback),
-      frame_dropper_enabled_(true),
+      frame_dropper_requested_(true),
+      force_disable_frame_dropper_(false),
       current_codec_(),
-      encoder_params_({BitrateAllocation(), 0, 0, 0}),
+      encoder_params_({VideoBitrateAllocation(), 0, 0, 0}),
       encoder_has_internal_source_(false),
       next_frame_types_(1, kVideoFrameDelta) {
-  _mediaOpt.Reset();
   // Allow VideoSender to be created on one thread but used on another, post
   // construction. This is currently how this class is being used by at least
   // one external project (diffractor).
@@ -69,8 +87,8 @@ int32_t VideoSender::RegisterSendCodec(const VideoCodec* sendCodec,
   current_codec_ = *sendCodec;
 
   if (!ret) {
-    LOG(LS_ERROR) << "Failed to initialize set encoder with payload name '"
-                  << sendCodec->plName << "'.";
+    RTC_LOG(LS_ERROR) << "Failed to initialize set encoder with codec type '"
+                      << sendCodec->codecType << "'.";
     return VCM_CODEC_ERROR;
   }
 
@@ -91,14 +109,12 @@ int32_t VideoSender::RegisterSendCodec(const VideoCodec* sendCodec,
     numLayers = 1;
   }
 
-  // If we have screensharing and we have layers, we disable frame dropper.
-  bool disable_frame_dropper =
-      numLayers > 1 && sendCodec->mode == kScreensharing;
-  if (disable_frame_dropper) {
-    _mediaOpt.EnableFrameDropper(false);
-  } else if (frame_dropper_enabled_) {
-    _mediaOpt.EnableFrameDropper(true);
-  }
+  // Force-disable frame dropper if either:
+  //  * We have screensharing with layers.
+  //  * "WebRTC-FrameDropper" field trial is "Disabled".
+  force_disable_frame_dropper_ =
+      field_trial::IsDisabled(kFrameDropperFieldTrial) ||
+      (numLayers > 1 && sendCodec->mode == VideoCodecMode::kScreensharing);
 
   {
     rtc::CritScope cs(&params_crit_);
@@ -110,10 +126,10 @@ int32_t VideoSender::RegisterSendCodec(const VideoCodec* sendCodec,
     encoder_has_internal_source_ = _encoder->InternalSource();
   }
 
-  LOG(LS_VERBOSE) << " max bitrate " << sendCodec->maxBitrate
-                  << " start bitrate " << sendCodec->startBitrate
-                  << " max frame rate " << sendCodec->maxFramerate
-                  << " max payload size " << maxPayloadSize;
+  RTC_LOG(LS_VERBOSE) << " max bitrate " << sendCodec->maxBitrate
+                      << " start bitrate " << sendCodec->startBitrate
+                      << " max frame rate " << sendCodec->maxFramerate
+                      << " max payload size " << maxPayloadSize;
   _mediaOpt.SetEncodingData(sendCodec->maxBitrate * 1000,
                             sendCodec->startBitrate * 1000,
                             sendCodec->maxFramerate);
@@ -123,17 +139,14 @@ int32_t VideoSender::RegisterSendCodec(const VideoCodec* sendCodec,
 // Register an external decoder object.
 // This can not be used together with external decoder callbacks.
 void VideoSender::RegisterExternalEncoder(VideoEncoder* externalEncoder,
-                                          uint8_t payloadType,
                                           bool internalSource /*= false*/) {
   RTC_DCHECK(sequenced_checker_.CalledSequentially());
 
   rtc::CritScope lock(&encoder_crit_);
 
   if (externalEncoder == nullptr) {
-    bool wasSendCodec = false;
-    RTC_CHECK(
-        _codecDataBase.DeregisterExternalEncoder(payloadType, &wasSendCodec));
-    if (wasSendCodec) {
+    _codecDataBase.DeregisterExternalEncoder();
+    {
       // Make sure the VCM doesn't use the de-registered codec
       rtc::CritScope params_lock(&params_crit_);
       _encoder = nullptr;
@@ -141,33 +154,8 @@ void VideoSender::RegisterExternalEncoder(VideoEncoder* externalEncoder,
     }
     return;
   }
-  _codecDataBase.RegisterExternalEncoder(externalEncoder, payloadType,
+  _codecDataBase.RegisterExternalEncoder(externalEncoder,
                                          internalSource);
-}
-
-// Get encode bitrate
-int VideoSender::Bitrate(unsigned int* bitrate) const {
-  RTC_DCHECK(sequenced_checker_.CalledSequentially());
-  // Since we're running on the thread that's the only thread known to modify
-  // the value of _encoder, we don't need to grab the lock here.
-
-  if (!_encoder)
-    return VCM_UNINITIALIZED;
-  *bitrate = _encoder->GetEncoderParameters().target_bitrate.get_sum_bps();
-  return 0;
-}
-
-// Get encode frame rate
-int VideoSender::FrameRate(unsigned int* framerate) const {
-  RTC_DCHECK(sequenced_checker_.CalledSequentially());
-  // Since we're running on the thread that's the only thread known to modify
-  // the value of _encoder, we don't need to grab the lock here.
-
-  if (!_encoder)
-    return VCM_UNINITIALIZED;
-
-  *framerate = _encoder->GetEncoderParameters().input_frame_rate;
-  return 0;
 }
 
 EncoderParameters VideoSender::UpdateEncoderParameters(
@@ -179,7 +167,7 @@ EncoderParameters VideoSender::UpdateEncoderParameters(
   if (input_frame_rate == 0)
     input_frame_rate = current_codec_.maxFramerate;
 
-  BitrateAllocation bitrate_allocation;
+  VideoBitrateAllocation bitrate_allocation;
   // Only call allocators if bitrate > 0 (ie, not suspended), otherwise they
   // might cap the bitrate to the min bitrate configured.
   if (target_bitrate_bps > 0) {
@@ -197,10 +185,10 @@ EncoderParameters VideoSender::UpdateEncoderParameters(
   return new_encoder_params;
 }
 
-void VideoSender::UpdateChannelParemeters(
+void VideoSender::UpdateChannelParameters(
     VideoBitrateAllocator* bitrate_allocator,
     VideoBitrateAllocationObserver* bitrate_updated_callback) {
-  BitrateAllocation target_rate;
+  VideoBitrateAllocation target_rate;
   {
     rtc::CritScope cs(&params_crit_);
     encoder_params_ =
@@ -268,20 +256,11 @@ void VideoSender::SetEncoderParameters(EncoderParameters params,
     _encoder->SetEncoderParameters(params);
 }
 
-// Deprecated:
-// TODO(perkj): Remove once no projects call this method. It currently do
-// nothing.
-int32_t VideoSender::RegisterProtectionCallback(
-    VCMProtectionCallback* protection_callback) {
-  // Deprecated:
-  // TODO(perkj): Remove once no projects call this method. It currently do
-  // nothing.
-  return VCM_OK;
-}
-
 // Add one raw video frame to the encoder, blocking.
-int32_t VideoSender::AddVideoFrame(const VideoFrame& videoFrame,
-                                   const CodecSpecificInfo* codecSpecificInfo) {
+int32_t VideoSender::AddVideoFrame(
+    const VideoFrame& videoFrame,
+    const CodecSpecificInfo* codecSpecificInfo,
+    absl::optional<VideoEncoder::EncoderInfo> encoder_info) {
   EncoderParameters encoder_params;
   std::vector<FrameType> next_frame_types;
   bool encoder_has_internal_source = false;
@@ -295,13 +274,24 @@ int32_t VideoSender::AddVideoFrame(const VideoFrame& videoFrame,
   if (_encoder == nullptr)
     return VCM_UNINITIALIZED;
   SetEncoderParameters(encoder_params, encoder_has_internal_source);
+  if (!encoder_info) {
+    encoder_info = _encoder->GetEncoderInfo();
+  }
+
+  // Frame dropping is enabled iff frame dropping has been requested, and
+  // frame dropping is not force-disabled, and rate controller is not trusted.
+  const bool frame_dropping_enabled =
+      frame_dropper_requested_ && !force_disable_frame_dropper_ &&
+      !encoder_info->has_trusted_rate_controller;
+  _mediaOpt.EnableFrameDropper(frame_dropping_enabled);
+
   if (_mediaOpt.DropFrame()) {
-    LOG(LS_VERBOSE) << "Drop Frame "
-                    << "target bitrate "
-                    << encoder_params.target_bitrate.get_sum_bps()
-                    << " loss rate " << encoder_params.loss_rate << " rtt "
-                    << encoder_params.rtt << " input frame rate "
-                    << encoder_params.input_frame_rate;
+    RTC_LOG(LS_VERBOSE) << "Drop Frame "
+                        << "target bitrate "
+                        << encoder_params.target_bitrate.get_sum_bps()
+                        << " loss rate " << encoder_params.loss_rate << " rtt "
+                        << encoder_params.rtt << " input frame rate "
+                        << encoder_params.input_frame_rate;
     post_encode_callback_->OnDroppedFrame(
         EncodedImageCallback::DropReason::kDroppedByMediaOptimizations);
     return VCM_OK;
@@ -310,7 +300,8 @@ int32_t VideoSender::AddVideoFrame(const VideoFrame& videoFrame,
   // processing so frame size always matches.
   if (!_codecDataBase.MatchesCurrentResolution(videoFrame.width(),
                                                videoFrame.height())) {
-    LOG(LS_ERROR) << "Incoming frame doesn't match set resolution. Dropping.";
+    RTC_LOG(LS_ERROR)
+        << "Incoming frame doesn't match set resolution. Dropping.";
     return VCM_PARAMETER_ERROR;
   }
   VideoFrame converted_frame = videoFrame;
@@ -319,7 +310,7 @@ int32_t VideoSender::AddVideoFrame(const VideoFrame& videoFrame,
   const bool is_buffer_type_supported =
       buffer_type == VideoFrameBuffer::Type::kI420 ||
       (buffer_type == VideoFrameBuffer::Type::kNative &&
-       _encoder->SupportsNativeHandle());
+       encoder_info->supports_native_handle);
   if (!is_buffer_type_supported) {
     // This module only supports software encoding.
     // TODO(pbos): Offload conversion from the encoder thread.
@@ -327,7 +318,7 @@ int32_t VideoSender::AddVideoFrame(const VideoFrame& videoFrame,
         converted_frame.video_frame_buffer()->ToI420());
 
     if (!converted_buffer) {
-      LOG(LS_ERROR) << "Frame conversion failed, dropping frame.";
+      RTC_LOG(LS_ERROR) << "Frame conversion failed, dropping frame.";
       return VCM_PARAMETER_ERROR;
     }
     converted_frame = VideoFrame(converted_buffer,
@@ -338,7 +329,7 @@ int32_t VideoSender::AddVideoFrame(const VideoFrame& videoFrame,
   int32_t ret =
       _encoder->Encode(converted_frame, codecSpecificInfo, next_frame_types);
   if (ret < 0) {
-    LOG(LS_ERROR) << "Failed to encode frame. Error code: " << ret;
+    RTC_LOG(LS_ERROR) << "Failed to encode frame. Error code: " << ret;
     return ret;
   }
 
@@ -387,7 +378,7 @@ int32_t VideoSender::IntraFrameRequest(size_t stream_index) {
 
 int32_t VideoSender::EnableFrameDropper(bool enable) {
   rtc::CritScope lock(&encoder_crit_);
-  frame_dropper_enabled_ = enable;
+  frame_dropper_requested_ = enable;
   _mediaOpt.EnableFrameDropper(enable);
   return VCM_OK;
 }

@@ -13,12 +13,11 @@
 
 #include <memory>
 
+#include "modules/desktop_capture/desktop_frame.h"
 #include "modules/desktop_capture/desktop_geometry.h"
 #include "rtc_base/constructormagic.h"
 
 namespace webrtc {
-
-class DesktopFrame;
 
 class MouseCursor {
  public:
@@ -34,7 +33,7 @@ class MouseCursor {
   void set_image(DesktopFrame* image) { image_.reset(image); }
   const DesktopFrame* image() const { return image_.get(); }
 
-  void set_hotspot(const DesktopVector& hotspot ) { hotspot_ = hotspot; }
+  void set_hotspot(const DesktopVector& hotspot) { hotspot_ = hotspot; }
   const DesktopVector& hotspot() const { return hotspot_; }
 
  private:

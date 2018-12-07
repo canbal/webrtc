@@ -8,6 +8,7 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include <cstdint>
 #include <vector>
 
 #include "common_video/h264/h264_common.h"
@@ -159,7 +160,7 @@ void TestSps(SpsMode mode, SpsVuiRewriter::ParseResult expected_parse_result) {
   index.payload_start_offset += H264::kNaluTypeSize;
   index.payload_size -= H264::kNaluTypeSize;
 
-  rtc::Optional<SpsParser::SpsState> sps;
+  absl::optional<SpsParser::SpsState> sps;
   rtc::Buffer out_buffer;
   SpsVuiRewriter::ParseResult result =
       SpsVuiRewriter::ParseAndRewriteSps(&buffer[index.payload_start_offset],

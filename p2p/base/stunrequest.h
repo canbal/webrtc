@@ -11,10 +11,15 @@
 #ifndef P2P_BASE_STUNREQUEST_H_
 #define P2P_BASE_STUNREQUEST_H_
 
+#include <stddef.h>
+#include <stdint.h>
 #include <map>
 #include <string>
+
 #include "p2p/base/stun.h"
-#include "rtc_base/sigslot.h"
+#include "rtc_base/messagehandler.h"
+#include "rtc_base/messagequeue.h"
+#include "rtc_base/third_party/sigslot/sigslot.h"
 #include "rtc_base/thread.h"
 
 namespace cricket {
@@ -32,7 +37,7 @@ const int STUN_TOTAL_TIMEOUT = 39750;  // milliseconds
 // response or determine that the request has timed out.
 class StunRequestManager {
  public:
-  StunRequestManager(rtc::Thread* thread);
+  explicit StunRequestManager(rtc::Thread* thread);
   ~StunRequestManager();
 
   // Starts sending the given request (perhaps after a delay).
@@ -83,7 +88,7 @@ class StunRequestManager {
 class StunRequest : public rtc::MessageHandler {
  public:
   StunRequest();
-  StunRequest(StunMessage* request);
+  explicit StunRequest(StunMessage* request);
   ~StunRequest() override;
 
   // Causes our wrapped StunMessage to be Prepared
@@ -94,6 +99,11 @@ class StunRequest : public rtc::MessageHandler {
 
   // Returns the transaction ID of this request.
   const std::string& id() { return msg_->transaction_id(); }
+
+  // Returns the reduced transaction ID of this request.
+  uint32_t reduced_transaction_id() const {
+    return msg_->reduced_transaction_id();
+  }
 
   // the origin value
   const std::string& origin() const { return origin_; }

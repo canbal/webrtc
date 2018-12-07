@@ -14,6 +14,7 @@ import android.graphics.Matrix;
 import android.opengl.GLES11Ext;
 import android.opengl.GLES20;
 import java.nio.ByteBuffer;
+import javax.annotation.Nullable;
 
 /**
  * Java version of webrtc::VideoFrame and webrtc::VideoFrameBuffer. A difference from the C++
@@ -25,32 +26,36 @@ import java.nio.ByteBuffer;
  * format and serves as a fallback for video sinks that can only handle I420, e.g. the internal
  * WebRTC software encoders.
  */
-public class VideoFrame {
-  public interface Buffer {
+public class VideoFrame implements RefCounted {
+  /**
+   * Implements image storage medium. Might be for example an OpenGL texture or a memory region
+   * containing I420-data.
+   *
+   * <p>Reference counting is needed since a video buffer can be shared between multiple VideoSinks,
+   * and the buffer needs to be returned to the VideoSource as soon as all references are gone.
+   */
+  public interface Buffer extends RefCounted {
     /**
      * Resolution of the buffer in pixels.
      */
-    int getWidth();
-    int getHeight();
+    @CalledByNative("Buffer") int getWidth();
+    @CalledByNative("Buffer") int getHeight();
 
     /**
      * Returns a memory-backed frame in I420 format. If the pixel data is in another format, a
      * conversion will take place. All implementations must provide a fallback to I420 for
      * compatibility with e.g. the internal WebRTC software encoders.
      */
-    I420Buffer toI420();
+    @CalledByNative("Buffer") I420Buffer toI420();
 
-    /**
-     * Reference counting is needed since a video buffer can be shared between multiple VideoSinks,
-     * and the buffer needs to be returned to the VideoSource as soon as all references are gone.
-     */
-    void retain();
-    void release();
+    @Override @CalledByNative("Buffer") void retain();
+    @Override @CalledByNative("Buffer") void release();
 
     /**
      * Crops a region defined by |cropx|, |cropY|, |cropWidth| and |cropHeight|. Scales it to size
      * |scaleWidth| x |scaleHeight|.
      */
+    @CalledByNative("Buffer")
     Buffer cropAndScale(
         int cropX, int cropY, int cropWidth, int cropHeight, int scaleWidth, int scaleHeight);
   }
@@ -65,25 +70,25 @@ public class VideoFrame {
      * be 0. Callers may mutate the ByteBuffer (eg. through relative-read operations), so
      * implementations must return a new ByteBuffer or slice for each call.
      */
-    ByteBuffer getDataY();
+    @CalledByNative("I420Buffer") ByteBuffer getDataY();
     /**
      * Returns a direct ByteBuffer containing U-plane data. The buffer capacity is at least
      * getStrideU() * ((getHeight() + 1) / 2) bytes. The position of the returned buffer is ignored
      * and must be 0. Callers may mutate the ByteBuffer (eg. through relative-read operations), so
      * implementations must return a new ByteBuffer or slice for each call.
      */
-    ByteBuffer getDataU();
+    @CalledByNative("I420Buffer") ByteBuffer getDataU();
     /**
      * Returns a direct ByteBuffer containing V-plane data. The buffer capacity is at least
      * getStrideV() * ((getHeight() + 1) / 2) bytes. The position of the returned buffer is ignored
      * and must be 0. Callers may mutate the ByteBuffer (eg. through relative-read operations), so
      * implementations must return a new ByteBuffer or slice for each call.
      */
-    ByteBuffer getDataV();
+    @CalledByNative("I420Buffer") ByteBuffer getDataV();
 
-    int getStrideY();
-    int getStrideU();
-    int getStrideV();
+    @CalledByNative("I420Buffer") int getStrideY();
+    @CalledByNative("I420Buffer") int getStrideU();
+    @CalledByNative("I420Buffer") int getStrideV();
   }
 
   /**
@@ -113,13 +118,19 @@ public class VideoFrame {
      * homogeneous coordinates of the form (s, t, 1) with s and t in the inclusive range [0, 1] to
      * the coordinate that should be used to sample that location from the buffer.
      */
-    public Matrix getTransformMatrix();
+    Matrix getTransformMatrix();
   }
 
   private final Buffer buffer;
   private final int rotation;
   private final long timestampNs;
 
+  /**
+   * Constructs a new VideoFrame backed by the given {@code buffer}.
+   *
+   * @note Ownership of the buffer object is tranferred to the new VideoFrame.
+   */
+  @CalledByNative
   public VideoFrame(Buffer buffer, int rotation, long timestampNs) {
     if (buffer == null) {
       throw new IllegalArgumentException("buffer not allowed to be null");
@@ -132,6 +143,7 @@ public class VideoFrame {
     this.timestampNs = timestampNs;
   }
 
+  @CalledByNative
   public Buffer getBuffer() {
     return buffer;
   }
@@ -139,6 +151,7 @@ public class VideoFrame {
   /**
    * Rotation of the frame in degrees.
    */
+  @CalledByNative
   public int getRotation() {
     return rotation;
   }
@@ -146,6 +159,7 @@ public class VideoFrame {
   /**
    * Timestamp of the frame in nano seconds.
    */
+  @CalledByNative
   public long getTimestampNs() {
     return timestampNs;
   }
@@ -164,46 +178,14 @@ public class VideoFrame {
     return buffer.getWidth();
   }
 
-  /**
-   * Reference counting of the underlying buffer.
-   */
+  @Override
   public void retain() {
     buffer.retain();
   }
 
+  @Override
+  @CalledByNative
   public void release() {
     buffer.release();
   }
-
-  public static VideoFrame.Buffer cropAndScaleI420(final I420Buffer buffer, int cropX, int cropY,
-      int cropWidth, int cropHeight, int scaleWidth, int scaleHeight) {
-    if (cropWidth == scaleWidth && cropHeight == scaleHeight) {
-      // No scaling.
-      ByteBuffer dataY = buffer.getDataY();
-      ByteBuffer dataU = buffer.getDataU();
-      ByteBuffer dataV = buffer.getDataV();
-
-      dataY.position(cropX + cropY * buffer.getStrideY());
-      dataU.position(cropX / 2 + cropY / 2 * buffer.getStrideU());
-      dataV.position(cropX / 2 + cropY / 2 * buffer.getStrideV());
-
-      buffer.retain();
-      return JavaI420Buffer.wrap(buffer.getWidth(), buffer.getHeight(), dataY.slice(),
-          buffer.getStrideY(), dataU.slice(), buffer.getStrideU(), dataV.slice(),
-          buffer.getStrideV(), buffer::release);
-    }
-
-    JavaI420Buffer newBuffer = JavaI420Buffer.allocate(scaleWidth, scaleHeight);
-    nativeCropAndScaleI420(buffer.getDataY(), buffer.getStrideY(), buffer.getDataU(),
-        buffer.getStrideU(), buffer.getDataV(), buffer.getStrideV(), cropX, cropY, cropWidth,
-        cropHeight, newBuffer.getDataY(), newBuffer.getStrideY(), newBuffer.getDataU(),
-        newBuffer.getStrideU(), newBuffer.getDataV(), newBuffer.getStrideV(), scaleWidth,
-        scaleHeight);
-    return newBuffer;
-  }
-
-  private static native void nativeCropAndScaleI420(ByteBuffer srcY, int srcStrideY,
-      ByteBuffer srcU, int srcStrideU, ByteBuffer srcV, int srcStrideV, int cropX, int cropY,
-      int cropWidth, int cropHeight, ByteBuffer dstY, int dstStrideY, ByteBuffer dstU,
-      int dstStrideU, ByteBuffer dstV, int dstStrideV, int scaleWidth, int scaleHeight);
 }

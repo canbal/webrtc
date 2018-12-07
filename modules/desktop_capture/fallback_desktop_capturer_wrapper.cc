@@ -10,9 +10,11 @@
 
 #include "modules/desktop_capture/fallback_desktop_capturer_wrapper.h"
 
+#include <stddef.h>
 #include <utility>
 
 #include "rtc_base/checks.h"
+#include "rtc_base/thread_checker.h"
 #include "system_wrappers/include/metrics.h"
 
 namespace webrtc {
@@ -51,16 +53,16 @@ SharedMemoryFactoryProxy::SharedMemoryFactoryProxy(
 }
 
 // static
-std::unique_ptr<SharedMemoryFactory>
-SharedMemoryFactoryProxy::Create(SharedMemoryFactory* factory) {
+std::unique_ptr<SharedMemoryFactory> SharedMemoryFactoryProxy::Create(
+    SharedMemoryFactory* factory) {
   return std::unique_ptr<SharedMemoryFactory>(
       new SharedMemoryFactoryProxy(factory));
 }
 
 SharedMemoryFactoryProxy::~SharedMemoryFactoryProxy() = default;
 
-std::unique_ptr<SharedMemory>
-SharedMemoryFactoryProxy::CreateSharedMemory(size_t size) {
+std::unique_ptr<SharedMemory> SharedMemoryFactoryProxy::CreateSharedMemory(
+    size_t size) {
   RTC_DCHECK(thread_checker_.CalledOnValidThread());
   return factory_->CreateSharedMemory(size);
 }

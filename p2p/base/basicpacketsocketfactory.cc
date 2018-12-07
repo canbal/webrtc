@@ -10,40 +10,34 @@
 
 #include "p2p/base/basicpacketsocketfactory.h"
 
+#include <stddef.h>
 #include <string>
 
 #include "p2p/base/asyncstuntcpsocket.h"
-#include "p2p/base/stun.h"
 #include "rtc_base/asynctcpsocket.h"
 #include "rtc_base/asyncudpsocket.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/nethelpers.h"
-#include "rtc_base/physicalsocketserver.h"
+#include "rtc_base/socket.h"
 #include "rtc_base/socketadapters.h"
+#include "rtc_base/socketserver.h"
 #include "rtc_base/ssladapter.h"
 #include "rtc_base/thread.h"
 
 namespace rtc {
 
 BasicPacketSocketFactory::BasicPacketSocketFactory()
-    : thread_(Thread::Current()),
-      socket_factory_(NULL) {
-}
+    : thread_(Thread::Current()), socket_factory_(NULL) {}
 
 BasicPacketSocketFactory::BasicPacketSocketFactory(Thread* thread)
-    : thread_(thread),
-      socket_factory_(NULL) {
-}
+    : thread_(thread), socket_factory_(NULL) {}
 
 BasicPacketSocketFactory::BasicPacketSocketFactory(
     SocketFactory* socket_factory)
-    : thread_(NULL),
-      socket_factory_(socket_factory) {
-}
+    : thread_(NULL), socket_factory_(socket_factory) {}
 
-BasicPacketSocketFactory::~BasicPacketSocketFactory() {
-}
+BasicPacketSocketFactory::~BasicPacketSocketFactory() {}
 
 AsyncPacketSocket* BasicPacketSocketFactory::CreateUdpSocket(
     const SocketAddress& address,
@@ -56,8 +50,7 @@ AsyncPacketSocket* BasicPacketSocketFactory::CreateUdpSocket(
     return NULL;
   }
   if (BindSocket(socket, address, min_port, max_port) < 0) {
-    LOG(LS_ERROR) << "UDP bind failed with error "
-                    << socket->GetError();
+    RTC_LOG(LS_ERROR) << "UDP bind failed with error " << socket->GetError();
     delete socket;
     return NULL;
   }
@@ -71,7 +64,7 @@ AsyncPacketSocket* BasicPacketSocketFactory::CreateServerTcpSocket(
     int opts) {
   // Fail if TLS is required.
   if (opts & PacketSocketFactory::OPT_TLS) {
-    LOG(LS_ERROR) << "TLS support currently is not available.";
+    RTC_LOG(LS_ERROR) << "TLS support currently is not available.";
     return NULL;
   }
 
@@ -82,8 +75,7 @@ AsyncPacketSocket* BasicPacketSocketFactory::CreateServerTcpSocket(
   }
 
   if (BindSocket(socket, local_address, min_port, max_port) < 0) {
-    LOG(LS_ERROR) << "TCP bind failed with error "
-                  << socket->GetError();
+    RTC_LOG(LS_ERROR) << "TCP bind failed with error " << socket->GetError();
     delete socket;
     return NULL;
   }
@@ -133,10 +125,10 @@ AsyncPacketSocket* BasicPacketSocketFactory::CreateClientTcpSocket(
     // is mostly redundant in the first place. The socket will be bound when we
     // call Connect() instead.
     if (local_address.IsAnyIP()) {
-      LOG(LS_WARNING) << "TCP bind failed with error " << socket->GetError()
-                      << "; ignoring since socket is using 'any' address.";
+      RTC_LOG(LS_WARNING) << "TCP bind failed with error " << socket->GetError()
+                          << "; ignoring since socket is using 'any' address.";
     } else {
-      LOG(LS_ERROR) << "TCP bind failed with error " << socket->GetError();
+      RTC_LOG(LS_ERROR) << "TCP bind failed with error " << socket->GetError();
       delete socket;
       return NULL;
     }
@@ -172,6 +164,7 @@ AsyncPacketSocket* BasicPacketSocketFactory::CreateClientTcpSocket(
 
     ssl_adapter->SetAlpnProtocols(tcp_options.tls_alpn_protocols);
     ssl_adapter->SetEllipticCurves(tcp_options.tls_elliptic_curves);
+    ssl_adapter->SetCertVerifier(tcp_options.tls_cert_verifier);
 
     socket = ssl_adapter;
 
@@ -186,8 +179,7 @@ AsyncPacketSocket* BasicPacketSocketFactory::CreateClientTcpSocket(
   }
 
   if (socket->Connect(remote_address) < 0) {
-    LOG(LS_ERROR) << "TCP connect failed with error "
-                  << socket->GetError();
+    RTC_LOG(LS_ERROR) << "TCP connect failed with error " << socket->GetError();
     delete socket;
     return NULL;
   }

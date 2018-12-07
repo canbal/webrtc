@@ -11,14 +11,14 @@
 #ifndef MODULES_VIDEO_CODING_INCLUDE_VIDEO_CODING_DEFINES_H_
 #define MODULES_VIDEO_CODING_INCLUDE_VIDEO_CODING_DEFINES_H_
 
-#include <string>
-#include <vector>
+#include <stddef.h>
+#include <stdint.h>
 
+#include "absl/types/optional.h"
+#include "api/video/video_content_type.h"
 #include "api/video/video_frame.h"
-// For EncodedImage
-#include "common_video/include/video_frame.h"
-#include "modules/include/module_common_types.h"
-#include "typedefs.h"  // NOLINT(build/include)
+#include "api/video/video_timing.h"
+#include "common_types.h"  // NOLINT(build/include)
 
 namespace webrtc {
 
@@ -27,24 +27,19 @@ namespace webrtc {
 #define VCM_MISSING_CALLBACK 1
 #define VCM_OK 0
 #define VCM_GENERAL_ERROR -1
-#define VCM_LEVEL_EXCEEDED -2
-#define VCM_MEMORY -3
 #define VCM_PARAMETER_ERROR -4
-#define VCM_UNKNOWN_PAYLOAD -5
 #define VCM_CODEC_ERROR -6
 #define VCM_UNINITIALIZED -7
 #define VCM_NO_CODEC_REGISTERED -8
 #define VCM_JITTER_BUFFER_ERROR -9
 #define VCM_OLD_PACKET_ERROR -10
-#define VCM_NO_FRAME_DECODED -11
-#define VCM_NOT_IMPLEMENTED -20
 
 enum {
   // Timing frames settings. Timing frames are sent every
   // |kDefaultTimingFramesDelayMs|, or if the frame is at least
   // |kDefaultOutliserFrameSizePercent| in size of average frame.
   kDefaultTimingFramesDelayMs = 200,
-  kDefaultOutlierFrameSizePercent = 250,
+  kDefaultOutlierFrameSizePercent = 500,
   // Maximum number of frames for what we store encode start timing information.
   kMaxEncodeStartTimeListSize = 50,
 };
@@ -70,15 +65,13 @@ struct VCMFrameCount {
 class VCMReceiveCallback {
  public:
   virtual int32_t FrameToRender(VideoFrame& videoFrame,  // NOLINT
-                                rtc::Optional<uint8_t> qp,
+                                absl::optional<uint8_t> qp,
                                 VideoContentType content_type) = 0;
 
-  virtual int32_t ReceivedDecodedReferenceFrame(const uint64_t pictureId) {
-    return -1;
-  }
+  virtual int32_t ReceivedDecodedReferenceFrame(const uint64_t pictureId);
   // Called when the current receive codec changes.
-  virtual void OnIncomingPayloadType(int payload_type) {}
-  virtual void OnDecoderImplementationName(const char* implementation_name) {}
+  virtual void OnIncomingPayloadType(int payload_type);
+  virtual void OnDecoderImplementationName(const char* implementation_name);
 
  protected:
   virtual ~VCMReceiveCallback() {}
@@ -108,20 +101,6 @@ class VCMReceiveStatisticsCallback {
   virtual ~VCMReceiveStatisticsCallback() {}
 };
 
-// Callback class used for telling the user about how to configure the FEC,
-// and the rates sent the last second is returned to the VCM.
-class VCMProtectionCallback {
- public:
-  virtual int ProtectionRequest(const FecProtectionParams* delta_params,
-                                const FecProtectionParams* key_params,
-                                uint32_t* sent_video_rate_bps,
-                                uint32_t* sent_nack_rate_bps,
-                                uint32_t* sent_fec_rate_bps) = 0;
-
- protected:
-  virtual ~VCMProtectionCallback() {}
-};
-
 // Callback class used for telling the user about what frame type needed to
 // continue decoding.
 // Typically a key frame when the stream has been corrupted in some way.
@@ -145,22 +124,6 @@ class VCMPacketRequestCallback {
 
  protected:
   virtual ~VCMPacketRequestCallback() {}
-};
-
-class NackSender {
- public:
-  virtual void SendNack(const std::vector<uint16_t>& sequence_numbers) = 0;
-
- protected:
-  virtual ~NackSender() {}
-};
-
-class KeyFrameRequestSender {
- public:
-  virtual void RequestKeyFrame() = 0;
-
- protected:
-  virtual ~KeyFrameRequestSender() {}
 };
 
 }  // namespace webrtc

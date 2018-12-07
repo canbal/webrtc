@@ -11,6 +11,7 @@
 #ifndef P2P_BASE_PACKETLOSSESTIMATOR_H_
 #define P2P_BASE_PACKETLOSSESTIMATOR_H_
 
+#include <stddef.h>
 #include <stdint.h>
 #include <string>
 #include <unordered_map>
@@ -55,9 +56,6 @@ class PacketLossEstimator {
   double get_response_rate() const { return response_rate_; }
 
   std::size_t tracked_packet_count_for_testing() const;
-
-  // Output tracked packet state as a string.
-  std::string TrackedPacketsStringForTesting(std::size_t max) const;
 
  private:
   struct PacketInfo {

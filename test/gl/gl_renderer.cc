@@ -12,6 +12,7 @@
 
 #include <string.h>
 
+#include "common_types.h"  // NOLINT(build/include)
 #include "common_video/libyuv/include/webrtc_libyuv.h"
 #include "rtc_base/checks.h"
 
@@ -108,5 +109,5 @@ void GlRenderer::OnFrame(const webrtc::VideoFrame& frame) {
   glBindTexture(GL_TEXTURE_2D, 0);
   glFlush();
 }
-}  // test
-}  // webrtc
+}  // namespace test
+}  // namespace webrtc

@@ -11,12 +11,13 @@
 #ifndef RTC_BASE_NUMERICS_SEQUENCE_NUMBER_UTIL_H_
 #define RTC_BASE_NUMERICS_SEQUENCE_NUMBER_UTIL_H_
 
+#include <stdint.h>
 #include <limits>
 #include <type_traits>
 
-#include "api/optional.h"
-#include "rtc_base/mod_ops.h"
-#include "rtc_base/safe_compare.h"
+#include "absl/types/optional.h"
+#include "rtc_base/checks.h"
+#include "rtc_base/numerics/mod_ops.h"
 
 namespace webrtc {
 
@@ -120,7 +121,7 @@ class SeqNumUnwrapper {
 
  private:
   uint64_t last_unwrapped_;
-  rtc::Optional<T> last_value_;
+  absl::optional<T> last_value_;
 };
 
 }  // namespace webrtc

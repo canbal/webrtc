@@ -9,15 +9,23 @@
  */
 
 #include "rtc_base/nullsocketserver.h"
+
+#include <stdint.h>
+#include <memory>
+
 #include "rtc_base/gunit.h"
+#include "rtc_base/location.h"
+#include "rtc_base/messagehandler.h"
+#include "rtc_base/messagequeue.h"
+#include "rtc_base/thread.h"
+#include "rtc_base/timeutils.h"
+#include "test/gtest.h"
 
 namespace rtc {
 
 static const uint32_t kTimeout = 5000U;
 
-class NullSocketServerTest
-    : public testing::Test,
-      public MessageHandler {
+class NullSocketServerTest : public testing::Test, public MessageHandler {
  protected:
   void OnMessage(Message* message) override { ss_.WakeUp(); }
 

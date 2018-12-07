@@ -26,6 +26,7 @@ import pydub
 from . import audioproc_wrapper
 from . import eval_scores_factory
 from . import evaluation
+from . import external_vad
 from . import signal_processing
 from . import simulation
 from . import test_data_generation_factory
@@ -68,14 +69,19 @@ class TestApmModuleSimulator(unittest.TestCase):
             copy_with_identity=False))
     evaluation_score_factory = eval_scores_factory.EvaluationScoreWorkerFactory(
         polqa_tool_bin_path=os.path.join(
-            os.path.dirname(__file__), 'fake_polqa'))
+            os.path.dirname(__file__), 'fake_polqa'),
+        echo_metric_tool_bin_path=None
+    )
 
     # Instance simulator.
     simulator = simulation.ApmModuleSimulator(
         test_data_generator_factory=test_data_generator_factory,
         evaluation_score_factory=evaluation_score_factory,
         ap_wrapper=ap_wrapper,
-        evaluator=evaluator)
+        evaluator=evaluator,
+        external_vads={'fake': external_vad.ExternalVad(os.path.join(
+            os.path.dirname(__file__), 'fake_external_vad.py'), 'fake')}
+    )
 
     # What to simulate.
     config_files = ['apm_configs/default.json']
@@ -114,7 +120,9 @@ class TestApmModuleSimulator(unittest.TestCase):
         evaluation_score_factory=(
             eval_scores_factory.EvaluationScoreWorkerFactory(
                 polqa_tool_bin_path=os.path.join(
-                    os.path.dirname(__file__), 'fake_polqa'))),
+                    os.path.dirname(__file__), 'fake_polqa'),
+                echo_metric_tool_bin_path=None
+            )),
         ap_wrapper=audioproc_wrapper.AudioProcWrapper(
             audioproc_wrapper.AudioProcWrapper.DEFAULT_APM_SIMULATOR_BIN_PATH),
         evaluator=evaluation.ApmModuleEvaluator())
@@ -150,7 +158,9 @@ class TestApmModuleSimulator(unittest.TestCase):
         evaluation_score_factory=(
             eval_scores_factory.EvaluationScoreWorkerFactory(
                 polqa_tool_bin_path=os.path.join(
-                    os.path.dirname(__file__), 'fake_polqa'))),
+                    os.path.dirname(__file__), 'fake_polqa'),
+                echo_metric_tool_bin_path=None
+            )),
         ap_wrapper=audioproc_wrapper.AudioProcWrapper(
             audioproc_wrapper.AudioProcWrapper.DEFAULT_APM_SIMULATOR_BIN_PATH),
         evaluator=evaluation.ApmModuleEvaluator())

@@ -10,16 +10,17 @@
 
 #include <limits>
 
-#include "media/base/videobroadcaster.h"
+#include "absl/types/optional.h"
 #include "api/video/i420_buffer.h"
 #include "api/video/video_frame.h"
+#include "api/video/video_rotation.h"
 #include "media/base/fakevideorenderer.h"
-#include "rtc_base/gunit.h"
+#include "media/base/videobroadcaster.h"
+#include "test/gtest.h"
 
 using rtc::VideoBroadcaster;
 using rtc::VideoSinkWants;
 using cricket::FakeVideoRenderer;
-
 
 TEST(VideoBroadcasterTest, frame_wanted) {
   VideoBroadcaster broadcaster;
@@ -115,14 +116,14 @@ TEST(VideoBroadcasterTest, AppliesMinOfSinkWantsMaxAndTargetPixelCount) {
 
   FakeVideoRenderer sink1;
   VideoSinkWants wants1;
-  wants1.target_pixel_count = rtc::Optional<int>(1280 * 720);
+  wants1.target_pixel_count = 1280 * 720;
 
   broadcaster.AddOrUpdateSink(&sink1, wants1);
   EXPECT_EQ(1280 * 720, *broadcaster.wants().target_pixel_count);
 
   FakeVideoRenderer sink2;
   VideoSinkWants wants2;
-  wants2.target_pixel_count = rtc::Optional<int>(640 * 360);
+  wants2.target_pixel_count = 640 * 360;
   broadcaster.AddOrUpdateSink(&sink2, wants2);
   EXPECT_EQ(640 * 360, *broadcaster.wants().target_pixel_count);
 

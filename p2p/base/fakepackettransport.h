@@ -23,8 +23,8 @@ namespace rtc {
 // Used to simulate a packet-based transport.
 class FakePacketTransport : public PacketTransportInternal {
  public:
-  explicit FakePacketTransport(const std::string& debug_name)
-      : debug_name_(debug_name) {}
+  explicit FakePacketTransport(const std::string& transport_name)
+      : transport_name_(transport_name) {}
   ~FakePacketTransport() override {
     if (dest_ && dest_->dest_ == this) {
       dest_->dest_ = nullptr;
@@ -59,7 +59,7 @@ class FakePacketTransport : public PacketTransportInternal {
   }
 
   // Fake PacketTransportInternal implementation.
-  std::string debug_name() const override { return debug_name_; }
+  const std::string& transport_name() const override { return transport_name_; }
   bool writable() const override { return writable_; }
   bool receiving() const override { return receiving_; }
   int SendPacket(const char* data,
@@ -88,6 +88,13 @@ class FakePacketTransport : public PacketTransportInternal {
 
   const CopyOnWriteBuffer* last_sent_packet() { return &last_sent_packet_; }
 
+  absl::optional<NetworkRoute> network_route() const override {
+    return network_route_;
+  }
+  void SetNetworkRoute(absl::optional<NetworkRoute> network_route) {
+    network_route_ = network_route;
+  }
+
  private:
   void set_writable(bool writable) {
     if (writable_ == writable) {
@@ -112,18 +119,20 @@ class FakePacketTransport : public PacketTransportInternal {
     last_sent_packet_ = packet;
     if (dest_) {
       dest_->SignalReadPacket(dest_, packet.data<char>(), packet.size(),
-                              CreatePacketTime(0), 0);
+                              TimeMicros(), 0);
     }
   }
 
   CopyOnWriteBuffer last_sent_packet_;
   AsyncInvoker invoker_;
-  std::string debug_name_;
+  std::string transport_name_;
   FakePacketTransport* dest_ = nullptr;
   bool async_ = false;
   int async_delay_ms_ = 0;
   bool writable_ = false;
   bool receiving_ = false;
+
+  absl::optional<NetworkRoute> network_route_;
 };
 
 }  // namespace rtc

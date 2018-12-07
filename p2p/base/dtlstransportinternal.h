@@ -11,17 +11,35 @@
 #ifndef P2P_BASE_DTLSTRANSPORTINTERNAL_H_
 #define P2P_BASE_DTLSTRANSPORTINTERNAL_H_
 
+#include <stddef.h>
+#include <stdint.h>
 #include <memory>
 #include <string>
-#include <vector>
 
+#include "api/crypto/cryptooptions.h"
 #include "p2p/base/icetransportinternal.h"
-#include "p2p/base/jseptransport.h"
 #include "p2p/base/packettransportinternal.h"
+#include "rtc_base/constructormagic.h"
+#include "rtc_base/scoped_ref_ptr.h"
+#include "rtc_base/sslcertificate.h"
+#include "rtc_base/sslfingerprint.h"
 #include "rtc_base/sslstreamadapter.h"
-#include "rtc_base/stringencode.h"
+#include "rtc_base/third_party/sigslot/sigslot.h"
 
 namespace cricket {
+
+enum DtlsTransportState {
+  // Haven't started negotiating.
+  DTLS_TRANSPORT_NEW = 0,
+  // Have started negotiating.
+  DTLS_TRANSPORT_CONNECTING,
+  // Negotiated, and has a secure connection.
+  DTLS_TRANSPORT_CONNECTED,
+  // Transport is closed.
+  DTLS_TRANSPORT_CLOSED,
+  // Failed due to some error in the handshake process.
+  DTLS_TRANSPORT_FAILED,
+};
 
 enum PacketFlags {
   PF_NORMAL = 0x00,       // A normal packet.
@@ -39,19 +57,17 @@ class DtlsTransportInternal : public rtc::PacketTransportInternal {
  public:
   ~DtlsTransportInternal() override;
 
-  virtual const rtc::CryptoOptions& crypto_options() const = 0;
+  virtual const webrtc::CryptoOptions& crypto_options() const = 0;
 
   virtual DtlsTransportState dtls_state() const = 0;
-
-  virtual const std::string& transport_name() const = 0;
 
   virtual int component() const = 0;
 
   virtual bool IsDtlsActive() const = 0;
 
-  virtual bool GetSslRole(rtc::SSLRole* role) const = 0;
+  virtual bool GetDtlsRole(rtc::SSLRole* role) const = 0;
 
-  virtual bool SetSslRole(rtc::SSLRole role) = 0;
+  virtual bool SetDtlsRole(rtc::SSLRole role) = 0;
 
   // Finds out which DTLS-SRTP cipher was negotiated.
   // TODO(zhihuang): Remove this once all dependencies implement this.
@@ -68,9 +84,8 @@ class DtlsTransportInternal : public rtc::PacketTransportInternal {
   virtual bool SetLocalCertificate(
       const rtc::scoped_refptr<rtc::RTCCertificate>& certificate) = 0;
 
-  // Gets a copy of the remote side's SSL certificate.
-  virtual std::unique_ptr<rtc::SSLCertificate> GetRemoteSSLCertificate()
-      const = 0;
+  // Gets a copy of the remote side's SSL certificate chain.
+  virtual std::unique_ptr<rtc::SSLCertChain> GetRemoteSSLCertChain() const = 0;
 
   // Allows key material to be extracted for external encryption.
   virtual bool ExportKeyingMaterial(const std::string& label,
@@ -85,6 +100,8 @@ class DtlsTransportInternal : public rtc::PacketTransportInternal {
                                     const uint8_t* digest,
                                     size_t digest_len) = 0;
 
+  virtual bool SetSslMaxProtocolVersion(rtc::SSLProtocolVersion version) = 0;
+
   // Expose the underneath IceTransport.
   virtual IceTransportInternal* ice_transport() = 0;
 
@@ -92,9 +109,6 @@ class DtlsTransportInternal : public rtc::PacketTransportInternal {
 
   // Emitted whenever the Dtls handshake failed on some transport channel.
   sigslot::signal1<rtc::SSLHandshakeError> SignalDtlsHandshakeError;
-
-  // Debugging description of this transport.
-  std::string debug_name() const override;
 
  protected:
   DtlsTransportInternal();

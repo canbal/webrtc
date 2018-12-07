@@ -11,14 +11,16 @@
 #ifndef STATS_TEST_RTCTESTSTATS_H_
 #define STATS_TEST_RTCTESTSTATS_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
 #include "api/stats/rtcstats.h"
+#include "rtc_base/system/rtc_export.h"
 
 namespace webrtc {
 
-class RTCTestStats : public RTCStats {
+class RTC_EXPORT RTCTestStats : public RTCStats {
  public:
   WEBRTC_RTCSTATS_DECL();
 

@@ -13,14 +13,13 @@
 #define JNIEXPORT __attribute__((visibility("default")))
 
 #include "rtc_base/ssladapter.h"
-#include "sdk/android/src/jni/class_loader.h"
 #include "sdk/android/src/jni/classreferenceholder.h"
 #include "sdk/android/src/jni/jni_helpers.h"
 
 namespace webrtc {
 namespace jni {
 
-extern "C" jint JNIEXPORT JNICALL JNI_OnLoad(JavaVM *jvm, void *reserved) {
+extern "C" jint JNIEXPORT JNICALL JNI_OnLoad(JavaVM* jvm, void* reserved) {
   jint ret = InitGlobalJniVariables(jvm);
   RTC_DCHECK_GE(ret, 0);
   if (ret < 0)
@@ -28,13 +27,11 @@ extern "C" jint JNIEXPORT JNICALL JNI_OnLoad(JavaVM *jvm, void *reserved) {
 
   RTC_CHECK(rtc::InitializeSSL()) << "Failed to InitializeSSL()";
   LoadGlobalClassReferenceHolder();
-  JNIEnv* env = AttachCurrentThreadIfNeeded();
-  InitClassLoader(env);
 
   return ret;
 }
 
-extern "C" void JNIEXPORT JNICALL JNI_OnUnLoad(JavaVM *jvm, void *reserved) {
+extern "C" void JNIEXPORT JNICALL JNI_OnUnLoad(JavaVM* jvm, void* reserved) {
   FreeGlobalClassReferenceHolder();
   RTC_CHECK(rtc::CleanupSSL()) << "Failed to CleanupSSL()";
 }

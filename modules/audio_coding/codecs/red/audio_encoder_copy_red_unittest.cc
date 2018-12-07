@@ -13,7 +13,7 @@
 
 #include "modules/audio_coding/codecs/red/audio_encoder_copy_red.h"
 #include "rtc_base/checks.h"
-#include "rtc_base/safe_conversions.h"
+#include "rtc_base/numerics/safe_conversions.h"
 #include "test/gtest.h"
 #include "test/mock_audio_encoder.h"
 
@@ -48,10 +48,7 @@ class AudioEncoderCopyRedTest : public ::testing::Test {
         .WillRepeatedly(Return(sample_rate_hz_));
   }
 
-  void TearDown() override {
-    EXPECT_CALL(*mock_encoder_, Die()).Times(1);
-    red_.reset();
-  }
+  void TearDown() override { red_.reset(); }
 
   void Encode() {
     ASSERT_TRUE(red_.get() != NULL);
@@ -74,8 +71,7 @@ class AudioEncoderCopyRedTest : public ::testing::Test {
   const int red_payload_type_;
 };
 
-TEST_F(AudioEncoderCopyRedTest, CreateAndDestroy) {
-}
+TEST_F(AudioEncoderCopyRedTest, CreateAndDestroy) {}
 
 TEST_F(AudioEncoderCopyRedTest, CheckSampleRatePropagation) {
   EXPECT_CALL(*mock_encoder_, SampleRateHz()).WillOnce(Return(17));
@@ -100,8 +96,8 @@ TEST_F(AudioEncoderCopyRedTest, CheckMaxFrameSizePropagation) {
 
 TEST_F(AudioEncoderCopyRedTest, CheckTargetAudioBitratePropagation) {
   EXPECT_CALL(*mock_encoder_,
-              OnReceivedUplinkBandwidth(4711, rtc::Optional<int64_t>()));
-  red_->OnReceivedUplinkBandwidth(4711, rtc::Optional<int64_t>());
+              OnReceivedUplinkBandwidth(4711, absl::optional<int64_t>()));
+  red_->OnReceivedUplinkBandwidth(4711, absl::nullopt);
 }
 
 TEST_F(AudioEncoderCopyRedTest, CheckPacketLossFractionPropagation) {

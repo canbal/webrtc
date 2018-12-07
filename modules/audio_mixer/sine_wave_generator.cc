@@ -11,8 +11,9 @@
 #include "modules/audio_mixer/sine_wave_generator.h"
 
 #include <math.h>
+#include <stddef.h>
 
-#include "rtc_base/safe_conversions.h"
+#include "rtc_base/numerics/safe_conversions.h"
 
 namespace webrtc {
 

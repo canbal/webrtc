@@ -11,6 +11,11 @@
 #include "media/base/adaptedvideotracksource.h"
 
 #include "api/video/i420_buffer.h"
+#include "api/video/video_frame_buffer.h"
+#include "api/video/video_rotation.h"
+#include "rtc_base/checks.h"
+#include "rtc_base/scoped_ref_ptr.h"
+#include "rtc_base/timeutils.h"
 
 namespace rtc {
 
@@ -22,6 +27,7 @@ AdaptedVideoTrackSource::AdaptedVideoTrackSource(int required_alignment)
     : video_adapter_(required_alignment) {
   thread_checker_.DetachFromThread();
 }
+AdaptedVideoTrackSource::~AdaptedVideoTrackSource() = default;
 
 bool AdaptedVideoTrackSource::GetStats(Stats* stats) {
   rtc::CritScope lock(&stats_crit_);
@@ -95,7 +101,7 @@ bool AdaptedVideoTrackSource::AdaptFrame(int width,
                                          int* crop_y) {
   {
     rtc::CritScope lock(&stats_crit_);
-    stats_ = rtc::Optional<Stats>({width, height});
+    stats_ = Stats{width, height};
   }
 
   if (!broadcaster_.frame_wanted()) {
@@ -103,8 +109,8 @@ bool AdaptedVideoTrackSource::AdaptFrame(int width,
   }
 
   if (!video_adapter_.AdaptFrameResolution(
-          width, height, time_us * rtc::kNumNanosecsPerMicrosec,
-          crop_width, crop_height, out_width, out_height)) {
+          width, height, time_us * rtc::kNumNanosecsPerMicrosec, crop_width,
+          crop_height, out_width, out_height)) {
     broadcaster_.OnDiscardedFrame();
     // VideoAdapter dropped the frame.
     return false;

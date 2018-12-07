@@ -10,6 +10,9 @@
 
 #include "modules/rtp_rtcp/include/flexfec_receiver.h"
 
+#include <string.h>
+
+#include "api/array_view.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
 #include "rtc_base/scoped_ref_ptr.h"
@@ -49,6 +52,15 @@ FlexfecReceiver::~FlexfecReceiver() = default;
 
 void FlexfecReceiver::OnRtpPacket(const RtpPacketReceived& packet) {
   RTC_DCHECK_CALLED_SEQUENTIALLY(&sequence_checker_);
+
+  // If this packet was recovered, it might be originating from
+  // ProcessReceivedPacket in this object. To avoid lifetime issues with
+  // |recovered_packets_|, we therefore break the cycle here.
+  // This might reduce decoding efficiency a bit, since we can't disambiguate
+  // recovered packets by RTX from recovered packets by FlexFEC.
+  if (packet.recovered())
+    return;
+
   std::unique_ptr<ReceivedPacket> received_packet = AddReceivedPacket(packet);
   if (!received_packet)
     return;
@@ -79,7 +91,7 @@ std::unique_ptr<ReceivedPacket> FlexfecReceiver::AddReceivedPacket(
   if (received_packet->ssrc == ssrc_) {
     // This is a FlexFEC packet.
     if (packet.payload_size() < kMinFlexfecHeaderSize) {
-      LOG(LS_WARNING) << "Truncated FlexFEC packet, discarding.";
+      RTC_LOG(LS_WARNING) << "Truncated FlexFEC packet, discarding.";
       return nullptr;
     }
     received_packet->is_fec = true;
@@ -146,8 +158,8 @@ void FlexfecReceiver::ProcessReceivedPacket(
     if (now_ms - last_recovered_packet_ms_ > kPacketLogIntervalMs) {
       uint32_t media_ssrc =
           ForwardErrorCorrection::ParseSsrc(recovered_packet->pkt->data);
-      LOG(LS_VERBOSE) << "Recovered media packet with SSRC: " << media_ssrc
-                      << " from FlexFEC stream with SSRC: " << ssrc_ << ".";
+      RTC_LOG(LS_VERBOSE) << "Recovered media packet with SSRC: " << media_ssrc
+                          << " from FlexFEC stream with SSRC: " << ssrc_ << ".";
       last_recovered_packet_ms_ = now_ms;
     }
   }

@@ -13,7 +13,7 @@
 #include <vector>
 
 #include "api/audio_codecs/builtin_audio_encoder_factory.h"
-#include "rtc_base/safe_conversions.h"
+#include "rtc_base/numerics/safe_conversions.h"
 #include "test/gmock.h"
 #include "test/gtest.h"
 
@@ -43,7 +43,7 @@ TEST_P(AudioEncoderFactoryTest, CanConstructAllSupportedEncoders) {
   auto supported_encoders = factory->GetSupportedEncoders();
   for (const auto& spec : supported_encoders) {
     auto info = factory->QueryAudioEncoder(spec.format);
-    auto encoder = factory->MakeAudioEncoder(127, spec.format);
+    auto encoder = factory->MakeAudioEncoder(127, spec.format, absl::nullopt);
     EXPECT_TRUE(encoder);
     EXPECT_EQ(encoder->SampleRateHz(), info->sample_rate_hz);
     EXPECT_EQ(encoder->NumChannels(), info->num_channels);
@@ -56,7 +56,8 @@ TEST_P(AudioEncoderFactoryTest, CanRunAllSupportedEncoders) {
   auto factory = GetParam();
   auto supported_encoders = factory->GetSupportedEncoders();
   for (const auto& spec : supported_encoders) {
-    auto encoder = factory->MakeAudioEncoder(kTestPayloadType, spec.format);
+    auto encoder =
+        factory->MakeAudioEncoder(kTestPayloadType, spec.format, absl::nullopt);
     EXPECT_TRUE(encoder);
     encoder->Reset();
     const int num_samples = rtc::checked_cast<int>(

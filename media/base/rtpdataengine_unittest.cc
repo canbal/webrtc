@@ -8,6 +8,7 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
+#include <string.h>
 #include <memory>
 #include <string>
 
@@ -16,17 +17,18 @@
 #include "media/base/rtpdataengine.h"
 #include "media/base/rtputils.h"
 #include "rtc_base/copyonwritebuffer.h"
-#include "rtc_base/gunit.h"
-#include "rtc_base/helpers.h"
-#include "rtc_base/ssladapter.h"
+#include "rtc_base/fakeclock.h"
+#include "rtc_base/third_party/sigslot/sigslot.h"
+#include "rtc_base/timeutils.h"
+#include "test/gtest.h"
 
 class FakeDataReceiver : public sigslot::has_slots<> {
  public:
   FakeDataReceiver() : has_received_data_(false) {}
 
-  void OnDataReceived(
-      const cricket::ReceiveDataParams& params,
-      const char* data, size_t len) {
+  void OnDataReceived(const cricket::ReceiveDataParams& params,
+                      const char* data,
+                      size_t len) {
     has_received_data_ = true;
     last_received_data_ = std::string(data, len);
     last_received_data_len_ = len;
@@ -73,35 +75,25 @@ class RtpDataMediaChannelTest : public testing::Test {
     cricket::MediaConfig config;
     cricket::RtpDataMediaChannel* channel =
         static_cast<cricket::RtpDataMediaChannel*>(dme->CreateChannel(config));
-    channel->SetInterface(iface_.get());
-    channel->SignalDataReceived.connect(
-        receiver_.get(), &FakeDataReceiver::OnDataReceived);
+    channel->SetInterface(iface_.get(), /*media_transport=*/nullptr);
+    channel->SignalDataReceived.connect(receiver_.get(),
+                                        &FakeDataReceiver::OnDataReceived);
     return channel;
   }
 
-  FakeDataReceiver* receiver() {
-    return receiver_.get();
-  }
+  FakeDataReceiver* receiver() { return receiver_.get(); }
 
-  bool HasReceivedData() {
-    return receiver_->has_received_data();
-  }
+  bool HasReceivedData() { return receiver_->has_received_data(); }
 
-  std::string GetReceivedData() {
-    return receiver_->last_received_data();
-  }
+  std::string GetReceivedData() { return receiver_->last_received_data(); }
 
-  size_t GetReceivedDataLen() {
-    return receiver_->last_received_data_len();
-  }
+  size_t GetReceivedDataLen() { return receiver_->last_received_data_len(); }
 
   cricket::ReceiveDataParams GetReceivedDataParams() {
     return receiver_->last_received_data_params();
   }
 
-  bool HasSentData(int count) {
-    return (iface_->NumRtpPackets() > count);
-  }
+  bool HasSentData(int count) { return (iface_->NumRtpPackets() > count); }
 
   std::string GetSentData(int index) {
     // Assume RTP header of length 12
@@ -202,8 +194,7 @@ TEST_F(RtpDataMediaChannelTest, SendData) {
   unsigned char data[] = "food";
   rtc::CopyOnWriteBuffer payload(data, 4);
   unsigned char padded_data[] = {
-    0x00, 0x00, 0x00, 0x00,
-    'f', 'o', 'o', 'd',
+      0x00, 0x00, 0x00, 0x00, 'f', 'o', 'o', 'd',
   };
   cricket::SendDataResult result;
 
@@ -246,8 +237,7 @@ TEST_F(RtpDataMediaChannelTest, SendData) {
   EXPECT_EQ(cricket::SDR_SUCCESS, result);
   ASSERT_TRUE(HasSentData(0));
   EXPECT_EQ(sizeof(padded_data), GetSentData(0).length());
-  EXPECT_EQ(0, memcmp(
-      padded_data, GetSentData(0).data(), sizeof(padded_data)));
+  EXPECT_EQ(0, memcmp(padded_data, GetSentData(0).data(), sizeof(padded_data)));
   cricket::RtpHeader header0 = GetSentDataHeader(0);
   EXPECT_NE(0, header0.seq_num);
   EXPECT_NE(0U, header0.timestamp);
@@ -260,8 +250,7 @@ TEST_F(RtpDataMediaChannelTest, SendData) {
   EXPECT_TRUE(dmc->SendData(params, payload, &result));
   ASSERT_TRUE(HasSentData(1));
   EXPECT_EQ(sizeof(padded_data), GetSentData(1).length());
-  EXPECT_EQ(0, memcmp(
-      padded_data, GetSentData(1).data(), sizeof(padded_data)));
+  EXPECT_EQ(0, memcmp(padded_data, GetSentData(1).data(), sizeof(padded_data)));
   cricket::RtpHeader header1 = GetSentDataHeader(1);
   EXPECT_EQ(header1.ssrc, 42U);
   EXPECT_EQ(header1.payload_type, 103);
@@ -322,23 +311,21 @@ TEST_F(RtpDataMediaChannelTest, SendDataRate) {
 
 TEST_F(RtpDataMediaChannelTest, ReceiveData) {
   // PT= 103, SN=2, TS=3, SSRC = 4, data = "abcde"
-  unsigned char data[] = {
-    0x80, 0x67, 0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x2A,
-    0x00, 0x00, 0x00, 0x00,
-    'a', 'b', 'c', 'd', 'e'
-  };
+  unsigned char data[] = {0x80, 0x67, 0x00, 0x02, 0x00, 0x00, 0x00,
+                          0x03, 0x00, 0x00, 0x00, 0x2A, 0x00, 0x00,
+                          0x00, 0x00, 'a',  'b',  'c',  'd',  'e'};
   rtc::CopyOnWriteBuffer packet(data, sizeof(data));
 
   std::unique_ptr<cricket::RtpDataMediaChannel> dmc(CreateChannel());
 
   // SetReceived not called.
-  dmc->OnPacketReceived(&packet, rtc::PacketTime());
+  dmc->OnPacketReceived(&packet, /* packet_time_us */ -1);
   EXPECT_FALSE(HasReceivedData());
 
   dmc->SetReceive(true);
 
   // Unknown payload id
-  dmc->OnPacketReceived(&packet, rtc::PacketTime());
+  dmc->OnPacketReceived(&packet, /* packet_time_us */ -1);
   EXPECT_FALSE(HasReceivedData());
 
   cricket::DataCodec codec;
@@ -349,7 +336,7 @@ TEST_F(RtpDataMediaChannelTest, ReceiveData) {
   ASSERT_TRUE(dmc->SetRecvParameters(parameters));
 
   // Unknown stream
-  dmc->OnPacketReceived(&packet, rtc::PacketTime());
+  dmc->OnPacketReceived(&packet, /* packet_time_us */ -1);
   EXPECT_FALSE(HasReceivedData());
 
   cricket::StreamParams stream;
@@ -357,21 +344,19 @@ TEST_F(RtpDataMediaChannelTest, ReceiveData) {
   ASSERT_TRUE(dmc->AddRecvStream(stream));
 
   // Finally works!
-  dmc->OnPacketReceived(&packet, rtc::PacketTime());
+  dmc->OnPacketReceived(&packet, /* packet_time_us */ -1);
   EXPECT_TRUE(HasReceivedData());
   EXPECT_EQ("abcde", GetReceivedData());
   EXPECT_EQ(5U, GetReceivedDataLen());
 }
 
 TEST_F(RtpDataMediaChannelTest, InvalidRtpPackets) {
-  unsigned char data[] = {
-    0x80, 0x65, 0x00, 0x02
-  };
+  unsigned char data[] = {0x80, 0x65, 0x00, 0x02};
   rtc::CopyOnWriteBuffer packet(data, sizeof(data));
 
   std::unique_ptr<cricket::RtpDataMediaChannel> dmc(CreateChannel());
 
   // Too short
-  dmc->OnPacketReceived(&packet, rtc::PacketTime());
+  dmc->OnPacketReceived(&packet, /* packet_time_us */ -1);
   EXPECT_FALSE(HasReceivedData());
 }

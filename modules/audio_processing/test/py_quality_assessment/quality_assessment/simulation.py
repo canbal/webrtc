@@ -41,7 +41,9 @@ class ApmModuleSimulator(object):
   _PREFIX_SCORE = 'score-'
 
   def __init__(self, test_data_generator_factory, evaluation_score_factory,
-               ap_wrapper, evaluator):
+               ap_wrapper, evaluator, external_vads=None):
+    if external_vads is None:
+      external_vads = {}
     self._test_data_generator_factory = test_data_generator_factory
     self._evaluation_score_factory = evaluation_score_factory
     self._audioproc_wrapper = ap_wrapper
@@ -49,7 +51,9 @@ class ApmModuleSimulator(object):
     self._annotator = annotations.AudioAnnotationsExtractor(
         annotations.AudioAnnotationsExtractor.VadType.ENERGY_THRESHOLD |
         annotations.AudioAnnotationsExtractor.VadType.WEBRTC_COMMON_AUDIO |
-        annotations.AudioAnnotationsExtractor.VadType.WEBRTC_APM)
+        annotations.AudioAnnotationsExtractor.VadType.WEBRTC_APM,
+        external_vads
+    )
 
     # Init.
     self._test_data_generator_factory.SetOutputDirectoryPrefix(
@@ -267,9 +271,10 @@ class ApmModuleSimulator(object):
         input_signal_filepath, signal)
     data_access.Metadata.SaveFileMetadata(input_signal_filepath, metadata)
 
-  def _ExtractCaptureAnnotations(self, input_filepath, output_path):
+  def _ExtractCaptureAnnotations(self, input_filepath, output_path,
+                                 annotation_name=""):
     self._annotator.Extract(input_filepath)
-    self._annotator.Save(output_path)
+    self._annotator.Save(output_path, annotation_name)
 
   def _Simulate(self, test_data_generators, clean_capture_input_filepath,
                 render_input_filepath, test_data_cache_path,
@@ -333,6 +338,13 @@ class ApmModuleSimulator(object):
           echo_test_data_cache_path, noisy_capture_input_filepath,
           echo_path_filepath)
 
+      # Extract annotations for the APM input mix.
+      apm_input_basepath, apm_input_filename = os.path.split(
+          apm_input_filepath)
+      self._ExtractCaptureAnnotations(
+          apm_input_filepath, apm_input_basepath,
+          os.path.splitext(apm_input_filename)[0] + '-')
+
       # Simulate a call using APM.
       self._audioproc_wrapper.Run(
           config_filepath=config_filepath,
@@ -347,7 +359,9 @@ class ApmModuleSimulator(object):
             apm_input_metadata=apm_input_metadata,
             apm_output_filepath=self._audioproc_wrapper.output_filepath,
             reference_input_filepath=reference_signal_filepath,
-            output_path=evaluation_output_path)
+            render_input_filepath=render_input_filepath,
+            output_path=evaluation_output_path,
+        )
 
         # Save simulation metadata.
         data_access.Metadata.SaveAudioTestDataPaths(
@@ -358,7 +372,9 @@ class ApmModuleSimulator(object):
             render_filepath=render_input_filepath,
             capture_filepath=apm_input_filepath,
             apm_output_filepath=self._audioproc_wrapper.output_filepath,
-            apm_reference_filepath=reference_signal_filepath)
+            apm_reference_filepath=reference_signal_filepath,
+            apm_config_filepath=config_filepath,
+        )
       except exceptions.EvaluationScoreException as e:
         logging.warning('the evaluation failed: %s', e.message)
         continue

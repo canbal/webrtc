@@ -11,12 +11,18 @@
 #ifndef RTC_BASE_TESTECHOSERVER_H_
 #define RTC_BASE_TESTECHOSERVER_H_
 
+#include <stddef.h>
+#include <stdint.h>
+#include <algorithm>
 #include <list>
 #include <memory>
 
+#include "rtc_base/asyncpacketsocket.h"
+#include "rtc_base/asyncsocket.h"
 #include "rtc_base/asynctcpsocket.h"
 #include "rtc_base/constructormagic.h"
 #include "rtc_base/socketaddress.h"
+#include "rtc_base/third_party/sigslot/sigslot.h"
 #include "rtc_base/thread.h"
 
 namespace rtc {
@@ -40,9 +46,11 @@ class TestEchoServer : public sigslot::has_slots<> {
       client_sockets_.push_back(packet_socket);
     }
   }
-  void OnPacket(AsyncPacketSocket* socket, const char* buf, size_t size,
+  void OnPacket(AsyncPacketSocket* socket,
+                const char* buf,
+                size_t size,
                 const SocketAddress& remote_addr,
-                const PacketTime& packet_time) {
+                const int64_t& /* packet_time_us */) {
     rtc::PacketOptions options;
     socket->Send(buf, size, options);
   }

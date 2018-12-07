@@ -11,6 +11,8 @@
 #ifndef API_STATS_RTCSTATSREPORT_H_
 #define API_STATS_RTCSTATSREPORT_H_
 
+#include <stddef.h>
+#include <stdint.h>
 #include <map>
 #include <memory>
 #include <string>
@@ -20,12 +22,13 @@
 #include "rtc_base/refcount.h"
 #include "rtc_base/refcountedobject.h"
 #include "rtc_base/scoped_ref_ptr.h"
+#include "rtc_base/system/rtc_export.h"
 
 namespace webrtc {
 
 // A collection of stats.
 // This is accessible as a map from |RTCStats::id| to |RTCStats|.
-class RTCStatsReport : public rtc::RefCountInterface {
+class RTC_EXPORT RTCStatsReport : public rtc::RefCountInterface {
  public:
   typedef std::map<std::string, std::unique_ptr<const RTCStats>> StatsMap;
 
@@ -57,12 +60,29 @@ class RTCStatsReport : public rtc::RefCountInterface {
 
   explicit RTCStatsReport(int64_t timestamp_us);
   RTCStatsReport(const RTCStatsReport& other) = delete;
+  rtc::scoped_refptr<RTCStatsReport> Copy() const;
 
   int64_t timestamp_us() const { return timestamp_us_; }
   void AddStats(std::unique_ptr<const RTCStats> stats);
   const RTCStats* Get(const std::string& id) const;
   size_t size() const { return stats_.size(); }
 
+  // Gets the stat object of type |T| by ID, where |T| is any class descending
+  // from |RTCStats|.
+  // Returns null if there is no stats object for the given ID or it is the
+  // wrong type.
+  template <typename T>
+  const T* GetAs(const std::string& id) const {
+    const RTCStats* stats = Get(id);
+    if (!stats || stats->type() != T::kType) {
+      return nullptr;
+    }
+    return &stats->cast_to<const T>();
+  }
+
+  // Removes the stats object from the report, returning ownership of it or null
+  // if there is no object with |id|.
+  std::unique_ptr<const RTCStats> Take(const std::string& id);
   // Takes ownership of all the stats in |victim|, leaving it empty.
   void TakeMembersFrom(rtc::scoped_refptr<RTCStatsReport> victim);
 
@@ -72,7 +92,7 @@ class RTCStatsReport : public rtc::RefCountInterface {
 
   // Gets the subset of stats that are of type |T|, where |T| is any class
   // descending from |RTCStats|.
-  template<typename T>
+  template <typename T>
   std::vector<const T*> GetStatsOfType() const {
     std::vector<const T*> stats_of_type;
     for (const RTCStats& stats : *this) {

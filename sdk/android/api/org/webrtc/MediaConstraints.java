@@ -10,7 +10,8 @@
 
 package org.webrtc;
 
-import java.util.LinkedList;
+import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -28,10 +29,12 @@ public class MediaConstraints {
       this.value = value;
     }
 
+    @CalledByNative("KeyValuePair")
     public String getKey() {
       return key;
     }
 
+    @CalledByNative("KeyValuePair")
     public String getValue() {
       return value;
     }
@@ -42,7 +45,7 @@ public class MediaConstraints {
     }
 
     @Override
-    public boolean equals(Object other) {
+    public boolean equals(@Nullable Object other) {
       if (this == other) {
         return true;
       }
@@ -63,8 +66,8 @@ public class MediaConstraints {
   public final List<KeyValuePair> optional;
 
   public MediaConstraints() {
-    mandatory = new LinkedList<KeyValuePair>();
-    optional = new LinkedList<KeyValuePair>();
+    mandatory = new ArrayList<KeyValuePair>();
+    optional = new ArrayList<KeyValuePair>();
   }
 
   private static String stringifyKeyValuePairList(List<KeyValuePair> list) {
@@ -82,5 +85,15 @@ public class MediaConstraints {
   public String toString() {
     return "mandatory: " + stringifyKeyValuePairList(mandatory) + ", optional: "
         + stringifyKeyValuePairList(optional);
+  }
+
+  @CalledByNative
+  List<KeyValuePair> getMandatory() {
+    return mandatory;
+  }
+
+  @CalledByNative
+  List<KeyValuePair> getOptional() {
+    return optional;
   }
 }

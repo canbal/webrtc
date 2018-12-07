@@ -12,12 +12,16 @@
 
 #include "media/base/videocapturer.h"
 
-#include <algorithm>
+#include <cstdint>
 
 #include "api/video/i420_buffer.h"
 #include "api/video/video_frame.h"
+#include "api/video/video_frame_buffer.h"
+#include "api/video/video_rotation.h"
+#include "rtc_base/checks.h"
 #include "rtc_base/logging.h"
-#include "system_wrappers/include/field_trial.h"
+#include "rtc_base/scoped_ref_ptr.h"
+#include "rtc_base/timeutils.h"
 
 namespace cricket {
 
@@ -27,8 +31,6 @@ static const int64_t kMaxDistance = ~(static_cast<int64_t>(1) << 63);
 #ifdef WEBRTC_LINUX
 static const int kYU12Penalty = 16;  // Needs to be higher than MJPG index.
 #endif
-static const char* kSimulcastScreenshareFieldTrialName =
-    "WebRTC-SimulcastScreenshare";
 
 }  // namespace
 
@@ -39,6 +41,8 @@ VideoCapturer::VideoCapturer() : apply_rotation_(false) {
   thread_checker_.DetachFromThread();
   Construct();
 }
+
+VideoCapturer::~VideoCapturer() {}
 
 void VideoCapturer::Construct() {
   enable_camera_list_ = false;
@@ -65,6 +69,10 @@ bool VideoCapturer::StartCapturing(const VideoFormat& capture_format) {
   return true;
 }
 
+bool VideoCapturer::apply_rotation() {
+  return apply_rotation_;
+}
+
 void VideoCapturer::SetSupportedFormats(
     const std::vector<VideoFormat>& formats) {
   // This method is OK to call during initialization on a separate thread.
@@ -84,7 +92,7 @@ bool VideoCapturer::GetBestCaptureFormat(const VideoFormat& format,
   if (supported_formats->empty()) {
     return false;
   }
-  LOG(LS_INFO) << " Capture Requested " << format.ToString();
+  RTC_LOG(LS_INFO) << " Capture Requested " << format.ToString();
   int64_t best_distance = kMaxDistance;
   std::vector<VideoFormat>::const_iterator best = supported_formats->end();
   std::vector<VideoFormat>::const_iterator i;
@@ -92,14 +100,15 @@ bool VideoCapturer::GetBestCaptureFormat(const VideoFormat& format,
     int64_t distance = GetFormatDistance(format, *i);
     // TODO(fbarchard): Reduce to LS_VERBOSE if/when camera capture is
     // relatively bug free.
-    LOG(LS_INFO) << " Supported " << i->ToString() << " distance " << distance;
+    RTC_LOG(LS_INFO) << " Supported " << i->ToString() << " distance "
+                     << distance;
     if (distance < best_distance) {
       best_distance = distance;
       best = i;
     }
   }
   if (supported_formats->end() == best) {
-    LOG(LS_ERROR) << " No acceptable camera format found";
+    RTC_LOG(LS_ERROR) << " No acceptable camera format found";
     return false;
   }
 
@@ -108,8 +117,8 @@ bool VideoCapturer::GetBestCaptureFormat(const VideoFormat& format,
     best_format->height = best->height;
     best_format->fourcc = best->fourcc;
     best_format->interval = best->interval;
-    LOG(LS_INFO) << " Best " << best_format->ToString() << " Interval "
-                 << best_format->interval << " distance " << best_distance;
+    RTC_LOG(LS_INFO) << " Best " << best_format->ToString() << " Interval "
+                     << best_format->interval << " distance " << best_distance;
   }
   return true;
 }
@@ -117,7 +126,7 @@ bool VideoCapturer::GetBestCaptureFormat(const VideoFormat& format,
 void VideoCapturer::ConstrainSupportedFormats(const VideoFormat& max_format) {
   RTC_DCHECK(thread_checker_.CalledOnValidThread());
   max_format_.reset(new VideoFormat(max_format));
-  LOG(LS_VERBOSE) << " ConstrainSupportedFormats " << max_format.ToString();
+  RTC_LOG(LS_VERBOSE) << " ConstrainSupportedFormats " << max_format.ToString();
   UpdateFilteredSupportedFormats();
 }
 
@@ -177,10 +186,7 @@ bool VideoCapturer::AdaptFrame(int width,
     return false;
   }
 
-  bool simulcast_screenshare_enabled =
-      webrtc::field_trial::IsEnabled(kSimulcastScreenshareFieldTrialName);
-  if (enable_video_adapter_ &&
-      (!IsScreencast() || simulcast_screenshare_enabled)) {
+  if (enable_video_adapter_) {
     if (!video_adapter_.AdaptFrameResolution(
             width, height, camera_time_us * rtc::kNumNanosecsPerMicrosec,
             crop_width, crop_height, out_width, out_height)) {
@@ -218,7 +224,7 @@ void VideoCapturer::OnFrame(const webrtc::VideoFrame& frame,
       // in this case, for frames in flight at the time
       // applied_rotation is set to true. In that case, we just drop
       // the frame.
-      LOG(LS_WARNING) << "Non-I420 frame requiring rotation. Discarding.";
+      RTC_LOG(LS_WARNING) << "Non-I420 frame requiring rotation. Discarding.";
       return;
     }
     broadcaster_.OnFrame(webrtc::VideoFrame(
@@ -318,9 +324,10 @@ int64_t VideoCapturer::GetFormatDistance(const VideoFormat& desired,
   // Require camera fps to be at least 96% of what is requested, or higher,
   // if resolution differs. 96% allows for slight variations in fps. e.g. 29.97
   if (delta_fps < 0) {
-    float min_desirable_fps = delta_w ?
-    VideoFormat::IntervalToFpsFloat(desired.interval) * 28.f / 30.f :
-    VideoFormat::IntervalToFpsFloat(desired.interval) * 23.f / 30.f;
+    float min_desirable_fps =
+        delta_w
+            ? VideoFormat::IntervalToFpsFloat(desired.interval) * 28.f / 30.f
+            : VideoFormat::IntervalToFpsFloat(desired.interval) * 23.f / 30.f;
     delta_fps = -delta_fps;
     if (supported_fps < min_desirable_fps) {
       distance |= static_cast<int64_t>(1) << 62;

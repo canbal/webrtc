@@ -14,7 +14,7 @@
 #include "modules/audio_coding/neteq/tools/neteq_quality_test.h"
 #include "rtc_base/checks.h"
 #include "rtc_base/flags.h"
-#include "rtc_base/safe_conversions.h"
+#include "rtc_base/numerics/safe_conversions.h"
 #include "test/testsupport/fileutils.h"
 
 using testing::InitGoogleTest;
@@ -25,7 +25,7 @@ namespace {
 static const int kInputSampleRateKhz = 8;
 static const int kOutputSampleRateKhz = 8;
 
-DEFINE_int(frame_size_ms, 20, "Codec frame size (milliseconds).");
+WEBRTC_DEFINE_int(frame_size_ms, 20, "Codec frame size (milliseconds).");
 
 }  // namespace
 
@@ -52,7 +52,8 @@ class NetEqIlbcQualityTest : public NetEqQualityTest {
 
   int EncodeBlock(int16_t* in_data,
                   size_t block_size_samples,
-                  rtc::Buffer* payload, size_t max_bytes) override {
+                  rtc::Buffer* payload,
+                  size_t max_bytes) override {
     const size_t kFrameSizeSamples = 80;  // Samples per 10 ms.
     size_t encoded_samples = 0;
     uint32_t dummy_timestamp = 0;

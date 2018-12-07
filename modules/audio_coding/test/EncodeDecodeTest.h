@@ -15,10 +15,9 @@
 #include <string.h>
 
 #include "modules/audio_coding/include/audio_coding_module.h"
-#include "modules/audio_coding/test/ACMTest.h"
 #include "modules/audio_coding/test/PCMFile.h"
 #include "modules/audio_coding/test/RTPFile.h"
-#include "typedefs.h"  // NOLINT(build/include)
+#include "modules/include/module_common_types.h"
 
 namespace webrtc {
 
@@ -48,14 +47,11 @@ class Sender {
  public:
   Sender();
   void Setup(AudioCodingModule *acm, RTPStream *rtpStream,
-             std::string in_file_name, int sample_rate, size_t channels);
+             std::string in_file_name, int in_sample_rate,
+             int payload_type, SdpAudioFormat format);
   void Teardown();
   void Run();
   bool Add10MsData();
-
-  //for auto_test and logging
-  uint8_t testMode;
-  uint8_t codeId;
 
  protected:
   AudioCodingModule* _acm;
@@ -71,15 +67,11 @@ class Receiver {
   Receiver();
   virtual ~Receiver() {};
   void Setup(AudioCodingModule *acm, RTPStream *rtpStream,
-             std::string out_file_name, size_t channels);
+             std::string out_file_name, size_t channels, int file_num);
   void Teardown();
   void Run();
   virtual bool IncomingPacket();
   bool PlayoutData();
-
-  //for auto_test and logging
-  uint8_t codeId;
-  uint8_t testMode;
 
  private:
   PCMFile _pcmFile;
@@ -98,24 +90,10 @@ class Receiver {
   uint32_t _nextTime;
 };
 
-class EncodeDecodeTest : public ACMTest {
+class EncodeDecodeTest {
  public:
   EncodeDecodeTest();
-  explicit EncodeDecodeTest(int testMode);
-  void Perform() override;
-
-  uint16_t _playoutFreq;
-  uint8_t _testMode;
-
- private:
-  std::string EncodeToFile(int fileType,
-                           int codeId,
-                           int* codePars,
-                           int testMode);
-
- protected:
-  Sender _sender;
-  Receiver _receiver;
+  void Perform();
 };
 
 }  // namespace webrtc

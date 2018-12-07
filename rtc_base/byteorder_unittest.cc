@@ -11,7 +11,7 @@
 #include <stdint.h>
 
 #include "rtc_base/byteorder.h"
-#include "rtc_base/gunit.h"
+#include "test/gtest.h"
 
 namespace rtc {
 
@@ -80,4 +80,3 @@ TEST(ByteOrderTest, TestGet) {
 }
 
 }  // namespace rtc
-

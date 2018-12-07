@@ -10,8 +10,8 @@
 
 #include "modules/audio_device/dummy/file_audio_device_factory.h"
 
+#include <stdio.h>
 #include <cstdlib>
-#include <cstring>
 
 #include "modules/audio_device/dummy/file_audio_device.h"
 #include "rtc_base/logging.h"
@@ -26,9 +26,10 @@ FileAudioDevice* FileAudioDeviceFactory::CreateFileAudioDevice() {
   // Bail out here if the files haven't been set explicitly.
   // audio_device_impl.cc should then fall back to dummy audio.
   if (!_isConfigured) {
-    LOG(LS_WARNING) << "WebRTC configured with WEBRTC_DUMMY_FILE_DEVICES but "
-                    << "no device files supplied. Will fall back to dummy "
-                    << "audio.";
+    RTC_LOG(LS_WARNING)
+        << "WebRTC configured with WEBRTC_DUMMY_FILE_DEVICES but "
+        << "no device files supplied. Will fall back to dummy "
+        << "audio.";
 
     return nullptr;
   }
@@ -36,7 +37,8 @@ FileAudioDevice* FileAudioDeviceFactory::CreateFileAudioDevice() {
 }
 
 void FileAudioDeviceFactory::SetFilenamesToUse(
-    const char* inputAudioFilename, const char* outputAudioFilename) {
+    const char* inputAudioFilename,
+    const char* outputAudioFilename) {
 #ifdef WEBRTC_DUMMY_FILE_DEVICES
   RTC_DCHECK_LT(strlen(inputAudioFilename), MAX_FILENAME_LEN);
   RTC_DCHECK_LT(strlen(outputAudioFilename), MAX_FILENAME_LEN);
@@ -47,8 +49,9 @@ void FileAudioDeviceFactory::SetFilenamesToUse(
   _isConfigured = true;
 #else
   // Sanity: must be compiled with the right define to run this.
-  printf("Trying to use dummy file devices, but is not compiled "
-         "with WEBRTC_DUMMY_FILE_DEVICES. Bailing out.\n");
+  printf(
+      "Trying to use dummy file devices, but is not compiled "
+      "with WEBRTC_DUMMY_FILE_DEVICES. Bailing out.\n");
   std::exit(1);
 #endif
 }

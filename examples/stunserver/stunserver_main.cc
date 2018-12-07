@@ -7,14 +7,12 @@
  *  in the file PATENTS.  All contributing project authors may
  *  be found in the AUTHORS file in the root of the source tree.
  */
-
-#if defined(WEBRTC_POSIX)
-#include <errno.h>
-#endif  // WEBRTC_POSIX
-
 #include <iostream>
 
 #include "p2p/base/stunserver.h"
+#include "rtc_base/asyncudpsocket.h"
+#include "rtc_base/socketaddress.h"
+#include "rtc_base/socketserver.h"
 #include "rtc_base/thread.h"
 
 using cricket::StunServer;
@@ -31,7 +29,7 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  rtc::Thread *pthMain = rtc::Thread::Current();
+  rtc::Thread* pthMain = rtc::Thread::Current();
 
   rtc::AsyncUDPSocket* server_socket =
       rtc::AsyncUDPSocket::Create(pthMain->socketserver(), server_addr);

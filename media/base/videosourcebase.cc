@@ -10,6 +10,8 @@
 
 #include "media/base/videosourcebase.h"
 
+#include <algorithm>
+
 #include "rtc_base/checks.h"
 
 namespace rtc {
@@ -17,6 +19,7 @@ namespace rtc {
 VideoSourceBase::VideoSourceBase() {
   thread_checker_.DetachFromThread();
 }
+VideoSourceBase::~VideoSourceBase() = default;
 
 void VideoSourceBase::AddOrUpdateSink(
     VideoSinkInterface<webrtc::VideoFrame>* sink,

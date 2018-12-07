@@ -28,7 +28,7 @@ class MediaOptimization;
 }  // namespace media_optimization
 
 struct EncoderParameters {
-  BitrateAllocation target_bitrate;
+  VideoBitrateAllocation target_bitrate;
   uint8_t loss_rate;
   int64_t rtt;
   uint32_t input_frame_rate;
@@ -38,7 +38,7 @@ class VCMEncodedFrameCallback : public EncodedImageCallback {
  public:
   VCMEncodedFrameCallback(EncodedImageCallback* post_encode_callback,
                           media_optimization::MediaOptimization* media_opt);
-  virtual ~VCMEncodedFrameCallback();
+  ~VCMEncodedFrameCallback() override;
 
   // Implements EncodedImageCallback.
   EncodedImageCallback::Result OnEncodedImage(
@@ -57,7 +57,9 @@ class VCMEncodedFrameCallback : public EncodedImageCallback {
 
   void OnFrameRateChanged(size_t framerate);
 
-  void OnEncodeStarted(int64_t capture_time_ms, size_t simulcast_svc_idx);
+  void OnEncodeStarted(uint32_t rtp_timestamps,
+                       int64_t capture_time_ms,
+                       size_t simulcast_svc_idx);
 
   void SetTimingFramesThresholds(
       const VideoCodec::TimingFrameTriggerThresholds& thresholds) {
@@ -70,22 +72,38 @@ class VCMEncodedFrameCallback : public EncodedImageCallback {
     rtc::CritScope crit(&timing_params_lock_);
     timing_frames_info_.clear();
     last_timing_frame_time_ms_ = -1;
+    reordered_frames_logged_messages_ = 0;
+    stalled_encoder_logged_messages_ = 0;
   }
 
  private:
+  // For non-internal-source encoders, returns encode started time and fixes
+  // capture timestamp for the frame, if corrupted by the encoder.
+  absl::optional<int64_t> ExtractEncodeStartTime(size_t simulcast_svc_idx,
+                                                 EncodedImage* encoded_image)
+      RTC_EXCLUSIVE_LOCKS_REQUIRED(timing_params_lock_);
+
+  void FillTimingInfo(size_t simulcast_svc_idx, EncodedImage* encoded_image);
+
   rtc::CriticalSection timing_params_lock_;
   bool internal_source_;
   EncodedImageCallback* const post_encode_callback_;
   media_optimization::MediaOptimization* const media_opt_;
 
   struct EncodeStartTimeRecord {
-    EncodeStartTimeRecord(int64_t capture_time, int64_t encode_start_time)
-        : capture_time_ms(capture_time),
+    EncodeStartTimeRecord(uint32_t timestamp,
+                          int64_t capture_time,
+                          int64_t encode_start_time)
+        : rtp_timestamp(timestamp),
+          capture_time_ms(capture_time),
           encode_start_time_ms(encode_start_time) {}
+    uint32_t rtp_timestamp;
     int64_t capture_time_ms;
     int64_t encode_start_time_ms;
   };
   struct TimingFramesLayerInfo {
+    TimingFramesLayerInfo();
+    ~TimingFramesLayerInfo();
     size_t target_bitrate_bytes_per_sec = 0;
     std::list<EncodeStartTimeRecord> encode_start_list;
   };
@@ -96,6 +114,10 @@ class VCMEncodedFrameCallback : public EncodedImageCallback {
   int64_t last_timing_frame_time_ms_ RTC_GUARDED_BY(timing_params_lock_);
   VideoCodec::TimingFrameTriggerThresholds timing_frames_thresholds_
       RTC_GUARDED_BY(timing_params_lock_);
+  size_t incorrect_capture_time_logged_messages_
+      RTC_GUARDED_BY(timing_params_lock_);
+  size_t reordered_frames_logged_messages_ RTC_GUARDED_BY(timing_params_lock_);
+  size_t stalled_encoder_logged_messages_ RTC_GUARDED_BY(timing_params_lock_);
 
   // Experiment groups parsed from field trials for realtime video ([0]) and
   // screenshare ([1]). 0 means no group specified. Positive values are
@@ -122,10 +144,9 @@ class VCMGenericEncoder {
   void SetEncoderParameters(const EncoderParameters& params);
   EncoderParameters GetEncoderParameters() const;
 
-  int32_t SetPeriodicKeyFrames(bool enable);
   int32_t RequestFrame(const std::vector<FrameType>& frame_types);
   bool InternalSource() const;
-  bool SupportsNativeHandle() const;
+  VideoEncoder::EncoderInfo GetEncoderInfo() const;
 
  private:
   rtc::RaceChecker race_checker_;
@@ -135,7 +156,8 @@ class VCMGenericEncoder {
   const bool internal_source_;
   rtc::CriticalSection params_lock_;
   EncoderParameters encoder_params_ RTC_GUARDED_BY(params_lock_);
-  size_t streams_or_svc_num_;
+  size_t streams_or_svc_num_ RTC_GUARDED_BY(race_checker_);
+  VideoCodecType codec_type_ RTC_GUARDED_BY(race_checker_);
 };
 
 }  // namespace webrtc

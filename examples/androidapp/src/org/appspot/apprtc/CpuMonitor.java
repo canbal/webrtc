@@ -10,10 +10,12 @@
 
 package org.appspot.apprtc;
 
+import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.BatteryManager;
+import android.os.Build;
 import android.os.SystemClock;
 import android.util.Log;
 import java.io.BufferedReader;
@@ -29,6 +31,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import javax.annotation.Nullable;
 
 /**
  * Simple CPU monitor.  The caller creates a CpuMonitor object which can then
@@ -71,6 +74,7 @@ import java.util.concurrent.TimeUnit;
  *      correct value, and then returns to back to correct reading.  Both when
  *      jumping up and back down we might create faulty CPU load readings.
  */
+@TargetApi(Build.VERSION_CODES.KITKAT)
 class CpuMonitor {
   private static final String TAG = "CpuMonitor";
   private static final int MOVING_AVERAGE_SAMPLES = 5;
@@ -88,6 +92,7 @@ class CpuMonitor {
   // CPU frequency in percentage from maximum.
   private final MovingAverage frequencyScale;
 
+  @Nullable
   private ScheduledExecutorService executor;
   private long lastStatLogTimeMs;
   private long[] cpuFreqMax;
@@ -98,6 +103,7 @@ class CpuMonitor {
   private String[] maxPath;
   private String[] curPath;
   private double[] curFreqScales;
+  @Nullable
   private ProcStat lastProcStat;
 
   private static class ProcStat {
@@ -153,7 +159,16 @@ class CpuMonitor {
     }
   }
 
+  public static boolean isSupported() {
+    return Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT
+        && Build.VERSION.SDK_INT < Build.VERSION_CODES.N;
+  }
+
   public CpuMonitor(Context context) {
+    if (!isSupported()) {
+      throw new RuntimeException("CpuMonitor is not supported on this Android version.");
+    }
+
     Log.d(TAG, "CpuMonitor ctor.");
     appContext = context.getApplicationContext();
     userCpuUsage = new MovingAverage(MOVING_AVERAGE_SAMPLES);
@@ -472,7 +487,8 @@ class CpuMonitor {
    * Read the current utilization of all CPUs using the cumulative first line
    * of /proc/stat.
    */
-  private ProcStat readProcStat() {
+  @SuppressWarnings("StringSplitter")
+  private @Nullable ProcStat readProcStat() {
     long userTime = 0;
     long systemTime = 0;
     long idleTime = 0;

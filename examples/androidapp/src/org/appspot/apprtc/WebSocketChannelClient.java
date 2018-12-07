@@ -11,13 +11,15 @@
 package org.appspot.apprtc;
 
 import android.os.Handler;
+import javax.annotation.Nullable;
 import android.util.Log;
 import de.tavendo.autobahn.WebSocket.WebSocketConnectionObserver;
 import de.tavendo.autobahn.WebSocketConnection;
 import de.tavendo.autobahn.WebSocketException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.LinkedList;
+import java.util.ArrayList;
+import java.util.List;
 import org.appspot.apprtc.util.AsyncHttpURLConnection;
 import org.appspot.apprtc.util.AsyncHttpURLConnection.AsyncHttpEvents;
 import org.json.JSONException;
@@ -38,7 +40,9 @@ public class WebSocketChannelClient {
   private WebSocketConnection ws;
   private String wsServerUrl;
   private String postServerUrl;
+  @Nullable
   private String roomID;
+  @Nullable
   private String clientID;
   private WebSocketConnectionState state;
   // Do not remove this member variable. If this is removed, the observer gets garbage collected and
@@ -48,7 +52,7 @@ public class WebSocketChannelClient {
   private boolean closeEvent;
   // WebSocket send queue. Messages are added to the queue when WebSocket
   // client is not registered and are consumed in register() call.
-  private final LinkedList<String> wsSendQueue;
+  private final List<String> wsSendQueue = new ArrayList<>();
 
   /**
    * Possible WebSocket connection states.
@@ -70,7 +74,6 @@ public class WebSocketChannelClient {
     this.events = events;
     roomID = null;
     clientID = null;
-    wsSendQueue = new LinkedList<>();
     state = WebSocketConnectionState.NEW;
   }
 

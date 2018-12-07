@@ -11,14 +11,12 @@
 #ifndef MEDIA_BASE_VIDEOBROADCASTER_H_
 #define MEDIA_BASE_VIDEOBROADCASTER_H_
 
-#include <memory>
-#include <utility>
-#include <vector>
-
-#include "api/video/video_frame.h"
-#include "media/base/videosinkinterface.h"
+#include "api/video/video_frame_buffer.h"
+#include "api/video/video_source_interface.h"
 #include "media/base/videosourcebase.h"
 #include "rtc_base/criticalsection.h"
+#include "rtc_base/scoped_ref_ptr.h"
+#include "rtc_base/thread_annotations.h"
 #include "rtc_base/thread_checker.h"
 
 namespace rtc {
@@ -33,6 +31,7 @@ class VideoBroadcaster : public VideoSourceBase,
                          public VideoSinkInterface<webrtc::VideoFrame> {
  public:
   VideoBroadcaster();
+  ~VideoBroadcaster() override;
   void AddOrUpdateSink(VideoSinkInterface<webrtc::VideoFrame>* sink,
                        const VideoSinkWants& wants) override;
   void RemoveSink(VideoSinkInterface<webrtc::VideoFrame>* sink) override;

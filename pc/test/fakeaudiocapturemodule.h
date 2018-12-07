@@ -24,7 +24,6 @@
 
 #include "common_types.h"  // NOLINT(build/include)
 #include "modules/audio_device/include/audio_device.h"
-#include "rtc_base/basictypes.h"
 #include "rtc_base/criticalsection.h"
 #include "rtc_base/messagehandler.h"
 #include "rtc_base/scoped_ref_ptr.h"
@@ -33,9 +32,8 @@ namespace rtc {
 class Thread;
 }  // namespace rtc
 
-class FakeAudioCaptureModule
-    : public webrtc::AudioDeviceModule,
-      public rtc::MessageHandler {
+class FakeAudioCaptureModule : public webrtc::AudioDeviceModule,
+                               public rtc::MessageHandler {
  public:
   typedef uint16_t Sample;
 
@@ -90,9 +88,6 @@ class FakeAudioCaptureModule
   int32_t StopRecording() override;
   bool Recording() const override;
 
-  int32_t SetAGC(bool enable) override;
-  bool AGC() const override;
-
   int32_t InitSpeaker() override;
   bool SpeakerIsInitialized() const override;
   int32_t InitMicrophone() override;
@@ -125,18 +120,9 @@ class FakeAudioCaptureModule
   int32_t StereoRecordingIsAvailable(bool* available) const override;
   int32_t SetStereoRecording(bool enable) override;
   int32_t StereoRecording(bool* enabled) const override;
-  int32_t SetRecordingChannel(const ChannelType channel) override;
-  int32_t RecordingChannel(ChannelType* channel) const override;
 
   int32_t PlayoutDelay(uint16_t* delay_ms) const override;
 
-  int32_t SetRecordingSampleRate(const uint32_t samples_per_sec) override;
-  int32_t RecordingSampleRate(uint32_t* samples_per_sec) const override;
-  int32_t SetPlayoutSampleRate(const uint32_t samples_per_sec) override;
-  int32_t PlayoutSampleRate(uint32_t* samples_per_sec) const override;
-
-  int32_t SetLoudspeakerStatus(bool enable) override;
-  int32_t GetLoudspeakerStatus(bool* enabled) const override;
   bool BuiltInAECIsAvailable() const override { return false; }
   int32_t EnableBuiltInAEC(bool enable) override { return -1; }
   bool BuiltInAGCIsAvailable() const override { return false; }

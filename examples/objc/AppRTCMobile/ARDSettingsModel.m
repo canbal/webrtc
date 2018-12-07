@@ -10,9 +10,10 @@
 
 #import "ARDSettingsModel+Private.h"
 #import "ARDSettingsStore.h"
-#import "WebRTC/RTCCameraVideoCapturer.h"
-#import "WebRTC/RTCMediaConstraints.h"
-#import "WebRTC/RTCVideoCodecFactory.h"
+
+#import <WebRTC/RTCCameraVideoCapturer.h>
+#import <WebRTC/RTCDefaultVideoEncoderFactory.h>
+#import <WebRTC/RTCMediaConstraints.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -39,7 +40,11 @@ NS_ASSUME_NONNULL_BEGIN
   NSArray<NSArray<NSNumber *> *> *sortedResolutions =
       [[resolutions allObjects] sortedArrayUsingComparator:^NSComparisonResult(
                                     NSArray<NSNumber *> *obj1, NSArray<NSNumber *> *obj2) {
-        return obj1.firstObject > obj2.firstObject;
+        NSComparisonResult cmp = [obj1.firstObject compare:obj2.firstObject];
+        if (cmp != NSOrderedSame) {
+          return cmp;
+        }
+        return [obj1.lastObject compare:obj2.lastObject];
       }];
 
   NSMutableArray<NSString *> *resolutionStrings = [[NSMutableArray<NSString *> alloc] init];
@@ -109,14 +114,6 @@ NS_ASSUME_NONNULL_BEGIN
   [[self settingsStore] setCreateAecDump:createAecDump];
 }
 
-- (BOOL)currentUseLevelControllerSettingFromStore {
-  return [[self settingsStore] useLevelController];
-}
-
-- (void)storeUseLevelControllerSetting:(BOOL)useLevelController {
-  [[self settingsStore] setUseLevelController:useLevelController];
-}
-
 - (BOOL)currentUseManualAudioConfigSettingFromStore {
   return [[self settingsStore] useManualAudioConfig];
 }
@@ -168,23 +165,12 @@ NS_ASSUME_NONNULL_BEGIN
 }
 
 - (void)registerStoreDefaults {
-  NSString *defaultVideoResolutionSetting = [self defaultVideoResolutionSetting];
-  BOOL audioOnly = (defaultVideoResolutionSetting.length == 0);
-
-// The iOS simulator doesn't provide any sort of camera capture
-// support or emulation (http://goo.gl/rHAnC1) so don't bother
-// trying to open a local stream.
-#if TARGET_IPHONE_SIMULATOR
-  audioOnly = YES;
-#endif
-
   NSData *codecData = [NSKeyedArchiver archivedDataWithRootObject:[self defaultVideoCodecSetting]];
   [ARDSettingsStore setDefaultsForVideoResolution:[self defaultVideoResolutionSetting]
                                        videoCodec:codecData
                                           bitrate:nil
-                                        audioOnly:audioOnly
+                                        audioOnly:NO
                                     createAecDump:NO
-                               useLevelController:NO
                              useManualAudioConfig:YES];
 }
 

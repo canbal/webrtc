@@ -10,30 +10,46 @@
 
 #include "test/fake_decoder.h"
 
+#include <string.h>
+
 #include "api/video/i420_buffer.h"
+#include "api/video/video_frame.h"
+#include "api/video/video_frame_buffer.h"
+#include "api/video/video_rotation.h"
+#include "modules/video_coding/include/video_error_codes.h"
+#include "rtc_base/checks.h"
+#include "rtc_base/scoped_ref_ptr.h"
 #include "rtc_base/timeutils.h"
-#include "test/gtest.h"
 
 namespace webrtc {
 namespace test {
 
-FakeDecoder::FakeDecoder() : callback_(NULL) {}
+namespace {
+const int kDefaultWidth = 320;
+const int kDefaultHeight = 180;
+}  // namespace
+
+FakeDecoder::FakeDecoder()
+    : callback_(NULL), width_(kDefaultWidth), height_(kDefaultHeight) {}
 
 int32_t FakeDecoder::InitDecode(const VideoCodec* config,
                                 int32_t number_of_cores) {
-  config_ = *config;
   return WEBRTC_VIDEO_CODEC_OK;
 }
 
 int32_t FakeDecoder::Decode(const EncodedImage& input,
                             bool missing_frames,
-                            const RTPFragmentationHeader* fragmentation,
                             const CodecSpecificInfo* codec_specific_info,
                             int64_t render_time_ms) {
-  VideoFrame frame(I420Buffer::Create(config_.width, config_.height),
+  if (input._encodedWidth > 0 && input._encodedHeight > 0) {
+    width_ = input._encodedWidth;
+    height_ = input._encodedHeight;
+  }
+
+  VideoFrame frame(I420Buffer::Create(width_, height_),
                    webrtc::kVideoRotation_0,
                    render_time_ms * rtc::kNumMicrosecsPerMillisec);
-  frame.set_timestamp(input._timeStamp);
+  frame.set_timestamp(input.Timestamp());
   frame.set_ntp_time_ms(input.ntp_time_ms_);
 
   callback_->Decoded(frame);
@@ -58,7 +74,6 @@ const char* FakeDecoder::ImplementationName() const {
 
 int32_t FakeH264Decoder::Decode(const EncodedImage& input,
                                 bool missing_frames,
-                                const RTPFragmentationHeader* fragmentation,
                                 const CodecSpecificInfo* codec_specific_info,
                                 int64_t render_time_ms) {
   uint8_t value = 0;
@@ -69,16 +84,13 @@ int32_t FakeH264Decoder::Decode(const EncodedImage& input,
       i += sizeof(kStartCode) + 1;  // Skip start code and NAL header.
     }
     if (input._buffer[i] != value) {
-      EXPECT_EQ(value, input._buffer[i])
+      RTC_CHECK_EQ(value, input._buffer[i])
           << "Bitstream mismatch between sender and receiver.";
       return -1;
     }
     ++value;
   }
-  return FakeDecoder::Decode(input,
-                             missing_frames,
-                             fragmentation,
-                             codec_specific_info,
+  return FakeDecoder::Decode(input, missing_frames, codec_specific_info,
                              render_time_ms);
 }
 
